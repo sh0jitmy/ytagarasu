@@ -83,6 +83,7 @@ build: generate
 	@go build -v -o bin/web ./cmd/web
 	@go build -v -o bin/ytagarasu ./cmd/ytagarasu
 	@go build -v -o bin/ytagarasu-server ./cmd/ytagarasu-server
+	@go build -v -o bin/ytagarasu-agent ./cmd/ytagarasu-agent
 
 run: build
 	@echo "==> Starting local standalone servers..."

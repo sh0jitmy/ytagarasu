@@ -66,11 +66,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/services", s.handleListServices)
 	s.mux.HandleFunc("GET /api/v1/services/{service_id}/desired", s.handleDesiredManifest)
 
-	// Bundles
+	// Bundles & Reports
 	s.mux.HandleFunc("POST /api/v1/bundles/import", s.handleBundleImport)
+	s.mux.HandleFunc("POST /api/v1/audit/logs", s.handleAuditLogs)
 
 	// Virtual Repositories
 	s.mux.HandleFunc("GET /repos/", s.handleRepos)
+}
+
+func (s *Server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "received"})
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
