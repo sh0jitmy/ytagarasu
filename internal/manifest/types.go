@@ -228,20 +228,24 @@ type RollbackPolicy struct {
 
 // Manifest represents the top-level bundle deployment specification (manifest.yaml).
 type Manifest struct {
-	Version       string                   `json:"version" yaml:"version"`
-	BundleVersion string                   `json:"bundleVersion" yaml:"bundleVersion"`
-	Release       string                   `json:"release" yaml:"release"`
-	CreatedAt     time.Time                `json:"createdAt" yaml:"createdAt"`
-	ExpiresAt     *time.Time               `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
-	Author        string                   `json:"author,omitempty" yaml:"author,omitempty"`
-	Targets       []Target                 `json:"targets" yaml:"targets"`
-	Applications  []Application            `json:"applications" yaml:"applications"`
-	Packages      map[string]PackageTarget `json:"packages,omitempty" yaml:"packages,omitempty"`
-	Certificates  []Certificate            `json:"certificates,omitempty" yaml:"certificates,omitempty"`
-	Configs       []Config                 `json:"configs,omitempty" yaml:"configs,omitempty"`
-	Services      []Service                `json:"services,omitempty" yaml:"services,omitempty"`
-	HealthChecks  []HealthCheck            `json:"healthChecks,omitempty" yaml:"healthChecks,omitempty"`
-	Rollback      RollbackPolicy           `json:"rollback" yaml:"rollback"`
+	Version             string                   `json:"version" yaml:"version"`
+	BundleVersion       string                   `json:"bundleVersion" yaml:"bundleVersion"`
+	Release             string                   `json:"release" yaml:"release"`
+	BundleType          string                   `json:"bundleType,omitempty" yaml:"bundleType,omitempty"`
+	BaseRelease         string                   `json:"baseRelease,omitempty" yaml:"baseRelease,omitempty"`
+	BaseReleaseChecksum string                   `json:"baseReleaseChecksum,omitempty" yaml:"baseReleaseChecksum,omitempty"`
+	TargetRelease       string                   `json:"targetRelease,omitempty" yaml:"targetRelease,omitempty"`
+	CreatedAt           time.Time                `json:"createdAt" yaml:"createdAt"`
+	ExpiresAt           *time.Time               `json:"expiresAt,omitempty" yaml:"expiresAt,omitempty"`
+	Author              string                   `json:"author,omitempty" yaml:"author,omitempty"`
+	Targets             []Target                 `json:"targets" yaml:"targets"`
+	Applications        []Application            `json:"applications" yaml:"applications"`
+	Packages            map[string]PackageTarget `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Certificates        []Certificate            `json:"certificates,omitempty" yaml:"certificates,omitempty"`
+	Configs             []Config                 `json:"configs,omitempty" yaml:"configs,omitempty"`
+	Services            []Service                `json:"services,omitempty" yaml:"services,omitempty"`
+	HealthChecks        []HealthCheck            `json:"healthChecks,omitempty" yaml:"healthChecks,omitempty"`
+	Rollback            RollbackPolicy           `json:"rollback" yaml:"rollback"`
 }
 
 // RequiredFile represents a checked bundle artifact file status.
