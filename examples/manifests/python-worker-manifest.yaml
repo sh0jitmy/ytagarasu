@@ -1,0 +1,69 @@
+version: "1.0"
+bundleVersion: "2026.09.26.1"
+release: "0.9.5"
+createdAt: "2026-09-26T10:00:00Z"
+author: "Data Platform Team <data@example.internal>"
+
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+
+applications:
+  - name: "fraud-detector"
+    type: "python"
+    selector:
+      roles: ["worker"]
+    sourceDir: "artifacts/python/fraud-detector"
+    destination: "/opt/fraud-detector/app"
+    venvPath: "/opt/fraud-detector/venv"
+    wheelsDir: "artifacts/python/wheels"
+    requirementsFile: "artifacts/python/requirements.lock"
+    pythonBinary: "/usr/bin/python3"
+    owner: "worker"
+    group: "worker"
+
+packages:
+  ubuntu-24.04-amd64:
+    manager: "apt"
+    items:
+      - name: "python3.12"
+        version: "3.12.3-0ubuntu1"
+        selector:
+          roles: ["worker"]
+      - name: "python3.12-venv"
+        version: "3.12.3-0ubuntu1"
+        selector:
+          roles: ["worker"]
+
+configs:
+  - template: "configs/fraud-detector.env.tmpl"
+    destination: "/opt/fraud-detector/.env"
+    permissions: "0600"
+    owner: "worker"
+    group: "worker"
+    sopsEncrypted: true
+    selector:
+      roles: ["worker"]
+
+services:
+  - name: "fraud-detector"
+    action: "restart"
+    unitFile: "configs/fraud-detector.service"
+    timeoutSeconds: 45
+    selector:
+      roles: ["worker"]
+
+healthChecks:
+  - type: "command"
+    command: "/opt/fraud-detector/venv/bin/python -m fraud_detector --check"
+    expectedExitCode: 0
+    intervalSeconds: 3
+    maxRetries: 5
+    selector:
+      roles: ["worker"]
+
+rollback:
+  autoOnFailure: true
+  strategy: "immediate"
+  preserveBackupGenerations: 2

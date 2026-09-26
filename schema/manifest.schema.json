@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ytagarasu.internal/schemas/manifest.schema.json",
+  "title": "YtagarasuDeployManifest",
+  "description": "Schema for Ytagarasu offline deployment bundle manifest (manifest.yaml)",
+  "type": "object",
+  "required": [
+    "version",
+    "bundleVersion",
+    "release",
+    "createdAt",
+    "targets",
+    "applications"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Manifest schema version"
+    },
+    "bundleVersion": {
+      "type": "string",
+      "description": "Unique bundle version identifier"
+    },
+    "release": {
+      "type": "string",
+      "description": "Application semantic release version"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the bundle manifest was created"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional expiration timestamp for the bundle"
+    },
+    "author": {
+      "type": "string",
+      "description": "Author or release engineering team information"
+    },
+    "targets": {
+      "type": "array",
+      "description": "Target OS distributions and architectures",
+      "items": {
+        "type": "object",
+        "required": ["os", "release", "arch"],
+        "properties": {
+          "os": { "type": "string" },
+          "release": { "type": "string" },
+          "arch": { "type": "string" }
+        }
+      }
+    },
+    "applications": {
+      "type": "array",
+      "description": "Application components to deploy",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "selector"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["golang", "python", "react", "htmx"]
+          },
+          "selector": { "$ref": "#/definitions/Selector" },
+          "artifact": { "type": "string" },
+          "destination": { "type": "string" },
+          "permissions": { "type": "string" },
+          "owner": { "type": "string" },
+          "group": { "type": "string" },
+          "sourceDir": { "type": "string" },
+          "distDir": { "type": "string" },
+          "venvPath": { "type": "string" },
+          "wheelsDir": { "type": "string" },
+          "requirementsFile": { "type": "string" },
+          "pythonBinary": { "type": "string" },
+          "embeddedIn": { "type": "string" },
+          "templatesDir": { "type": "string" },
+          "staticDir": { "type": "string" }
+        }
+      }
+    },
+    "packages": {
+      "type": "object",
+      "description": "OS packages mapping by target (e.g. ubuntu-24.04-amd64)",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["manager", "items"],
+        "properties": {
+          "manager": {
+            "type": "string",
+            "enum": ["apt", "dnf", "yum"]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "version"],
+              "properties": {
+                "name": { "type": "string" },
+                "version": { "type": "string" },
+                "selector": { "$ref": "#/definitions/Selector" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "certificates": {
+      "type": "array",
+      "description": "Application TLS certificates managed by Ytagarasu",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "selector",
+          "certPath",
+          "keyPath",
+          "permissions",
+          "owner",
+          "group",
+          "provisioning"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "selector": { "$ref": "#/definitions/Selector" },
+          "certPath": { "type": "string" },
+          "keyPath": { "type": "string" },
+          "permissions": { "type": "string" },
+          "owner": { "type": "string" },
+          "group": { "type": "string" },
+          "provisioning": {
+            "type": "string",
+            "enum": ["acme", "encrypted_sops"]
+          },
+          "acmeServer": { "type": "string" },
+          "commonName": { "type": "string" },
+          "dnsNames": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "ipAddresses": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "autoRenewDaysBeforeExpiry": { "type": "integer" },
+          "reloadService": { "type": "string" },
+          "encryptedKeyArtifact": { "type": "string" },
+          "certArtifact": { "type": "string" }
+        }
+      }
+    },
+    "configs": {
+      "type": "array",
+      "description": "Configuration templates and files",
+      "items": {
+        "type": "object",
+        "required": [
+          "template",
+          "destination",
+          "permissions",
+          "owner",
+          "group"
+        ],
+        "properties": {
+          "template": { "type": "string" },
+          "destination": { "type": "string" },
+          "permissions": { "type": "string" },
+          "owner": { "type": "string" },
+          "group": { "type": "string" },
+          "sopsEncrypted": { "type": "boolean" },
+          "schema": { "type": "string" },
+          "validateCommand": { "type": "string" },
+          "selector": { "$ref": "#/definitions/Selector" }
+        }
+      }
+    },
+    "services": {
+      "type": "array",
+      "description": "Systemd services to control",
+      "items": {
+        "type": "object",
+        "required": ["name", "action"],
+        "properties": {
+          "name": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": ["restart", "reload", "start", "stop"]
+          },
+          "unitFile": { "type": "string" },
+          "timeoutSeconds": { "type": "integer" },
+          "selector": { "$ref": "#/definitions/Selector" }
+        }
+      }
+    },
+    "healthChecks": {
+      "type": "array",
+      "description": "Post-deployment health checks",
+      "items": {
+        "type": "object",
+        "required": ["type", "intervalSeconds", "maxRetries"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["http", "command", "tcp"]
+          },
+          "endpoint": { "type": "string" },
+          "expectedStatus": { "type": "integer" },
+          "command": { "type": "string" },
+          "expectedExitCode": { "type": "integer" },
+          "intervalSeconds": { "type": "integer" },
+          "maxRetries": { "type": "integer" },
+          "selector": { "$ref": "#/definitions/Selector" }
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "description": "Rollback policy configuration",
+      "required": ["autoOnFailure", "strategy"],
+      "properties": {
+        "autoOnFailure": { "type": "boolean" },
+        "strategy": {
+          "type": "string",
+          "enum": ["immediate", "manual"]
+        },
+        "preserveBackupGenerations": { "type": "integer" }
+      }
+    }
+  },
+  "definitions": {
+    "Selector": {
+      "type": "object",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hostnames": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -81,6 +81,7 @@ build: generate
 	@mkdir -p bin
 	@go build -v -o bin/app ./cmd/app
 	@go build -v -o bin/web ./cmd/web
+	@go build -v -o bin/ytagarasu ./cmd/ytagarasu
 
 run: build
 	@echo "==> Starting local standalone servers..."
