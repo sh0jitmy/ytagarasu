@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/sh0jitmy/ytagarasu/internal/bundle"
+	"github.com/sh0jitmy/ytagarasu/internal/delta"
 	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 	"github.com/stretchr/testify/assert"
@@ -161,4 +162,123 @@ func TestImporter_TamperedBundle_Rejected(t *testing.T) {
 	// Verify no release is created
 	_, err = db.GetActiveRelease(ctx, "test-service")
 	require.Error(t, err)
+}
+
+func TestImporter_DeltaBundle_Success_And_Mismatch(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	workDir := t.TempDir()
+
+	cas, err := store.NewCAS(filepath.Join(workDir, "cas"))
+	require.NoError(t, err)
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := store.NewDB(dsn)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	nsDir := filepath.Join(workDir, "namespaces")
+	imp, err := importer.NewImporter(cas, db, nsDir)
+	require.NoError(t, err)
+
+	// 1. Build Base Release (1.0.0) containing shared-binary and base-file
+	baseSrc := filepath.Join(workDir, "base-src")
+	require.NoError(t, os.MkdirAll(filepath.Join(baseSrc, "bin"), 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(baseSrc, "bin", "shared-app"), []byte("shared-v1"), 0700)) //nolint:gosec
+	require.NoError(t, os.WriteFile(filepath.Join(baseSrc, "bin", "base-only"), []byte("base-data"), 0600))
+
+	baseManifestYAML := `
+version: "1.0"
+bundleVersion: "2026.09.27.1"
+release: "1.0.0"
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+applications:
+  - name: "delta-service"
+    type: "golang"
+    artifact: "bin/shared-app"
+    destination: "/usr/local/bin/shared-app"
+`
+	baseManifestPath := filepath.Join(baseSrc, "manifest.yaml")
+	require.NoError(t, os.WriteFile(baseManifestPath, []byte(baseManifestYAML), 0600))
+
+	baseBundleTarGz := filepath.Join(workDir, "base.tar.gz")
+	pubKey, privKey, err := bundle.GenerateKeyPair()
+	require.NoError(t, err)
+
+	_, err = bundle.BuildBundle(bundle.BuildOptions{
+		ManifestPath: baseManifestPath,
+		SourceDir:    baseSrc,
+		OutputFile:   baseBundleTarGz,
+		PrivateKey:   privKey,
+	})
+	require.NoError(t, err)
+
+	// 2. Build Delta Bundle (Target Release 1.0.1) - keeps shared-app, adds updated-config
+	targetSrc := filepath.Join(workDir, "target-src")
+	require.NoError(t, os.MkdirAll(filepath.Join(targetSrc, "bin"), 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(targetSrc, "bin", "shared-app"), []byte("shared-v1"), 0700)) //nolint:gosec
+	require.NoError(t, os.WriteFile(filepath.Join(targetSrc, "config.yaml"), []byte("new-config"), 0600))
+
+	targetManifestYAML := `
+version: "1.0"
+bundleVersion: "2026.09.27.2"
+release: "1.0.1"
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+applications:
+  - name: "delta-service"
+    type: "golang"
+    artifact: "bin/shared-app"
+    destination: "/usr/local/bin/shared-app"
+`
+	targetManifestPath := filepath.Join(targetSrc, "manifest.yaml")
+	require.NoError(t, os.WriteFile(targetManifestPath, []byte(targetManifestYAML), 0600))
+
+	deltaBundleTarGz := filepath.Join(workDir, "delta.tar.gz")
+	_, err = delta.BuildDeltaBundle(delta.BuildDeltaOptions{
+		BaseBundlePath: baseBundleTarGz,
+		ManifestPath:   targetManifestPath,
+		SourceDir:      targetSrc,
+		OutputFile:     deltaBundleTarGz,
+		PrivateKey:     privKey,
+	})
+	require.NoError(t, err)
+
+	// 3. Attempt to import delta bundle BEFORE base release is imported -> must fail (Base Release Mismatch)
+	deltaBytes, err := os.ReadFile(filepath.Clean(deltaBundleTarGz)) //nolint:gosec
+	require.NoError(t, err)
+
+	_, err = imp.Import(ctx, bytes.NewReader(deltaBytes), hex.EncodeToString(pubKey))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "base release mismatch")
+
+	// 4. Import Base Release (1.0.0)
+	baseBytes, err := os.ReadFile(filepath.Clean(baseBundleTarGz)) //nolint:gosec
+	require.NoError(t, err)
+
+	resBase, err := imp.Import(ctx, bytes.NewReader(baseBytes), hex.EncodeToString(pubKey))
+	require.NoError(t, err)
+	assert.Equal(t, "1.0.0", resBase.ReleaseVersion)
+
+	// 5. Now import Delta Bundle -> must SUCCEED!
+	resDelta, err := imp.Import(ctx, bytes.NewReader(deltaBytes), hex.EncodeToString(pubKey))
+	require.NoError(t, err)
+	assert.Equal(t, "1.0.1", resDelta.ReleaseVersion)
+
+	// 6. Verify virtual repository has both the updated config and the carried-over base files
+	activeRel, err := db.GetActiveRelease(ctx, "delta-service")
+	require.NoError(t, err)
+	assert.Equal(t, "1.0.1", activeRel.ReleaseVersion)
+
+	// Check shared-app exists in service namespace
+	sharedAppFile := filepath.Join(nsDir, "delta-service", "bin", "shared-app")
+	assert.FileExists(t, sharedAppFile)
+	configFile := filepath.Join(nsDir, "delta-service", "config.yaml")
+	assert.FileExists(t, configFile)
 }

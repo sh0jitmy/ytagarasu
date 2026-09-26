@@ -139,14 +139,34 @@ func (imp *Importer) Import(ctx context.Context, r io.Reader, expectedPubKeyHex 
 	}
 	releaseID := fmt.Sprintf("%s-%s-%d", serviceID, releaseVersion, time.Now().Unix())
 
+	var baseArtifacts []store.ReleaseArtifact
+	if m.BundleType == "delta" {
+		if m.BaseRelease == "" {
+			return nil, errors.New("delta bundle rejected: baseRelease is not specified")
+		}
+		activeRel, getErr := imp.db.GetActiveRelease(ctx, serviceID)
+		if getErr != nil || activeRel.ReleaseVersion != m.BaseRelease {
+			activeVer := "none"
+			if activeRel != nil {
+				activeVer = activeRel.ReleaseVersion
+			}
+			return nil, fmt.Errorf("delta bundle rejected: base release mismatch (required: %s, active: %s)", m.BaseRelease, activeVer)
+		}
+		var artErr error
+		baseArtifacts, artErr = imp.db.GetReleaseArtifacts(ctx, activeRel.ID)
+		if artErr != nil {
+			return nil, fmt.Errorf("failed fetching base release artifacts: %w", artErr)
+		}
+	}
+
 	// 3. Ingest files into CAS & Prepare Namespace
 	serviceNamespaceDir := filepath.Join(imp.namespacesRoot, serviceID)
 	if err := os.MkdirAll(serviceNamespaceDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create service namespace directory: %w", err)
 	}
 
-	releaseArtifacts := make([]store.ReleaseArtifact, 0, len(verifyRes.Files))
-	artifactPaths := make([]string, 0, len(verifyRes.Files))
+	releaseArtifacts := make([]store.ReleaseArtifact, 0, len(verifyRes.Files)+len(baseArtifacts))
+	artifactPaths := make([]string, 0, len(verifyRes.Files)+len(baseArtifacts))
 	var totalBytes int64
 
 	for relPath, content := range verifyRes.Files {
@@ -173,6 +193,27 @@ func (imp *Importer) Import(ctx context.Context, r io.Reader, expectedPubKeyHex 
 			CreatedAt:  time.Now().UTC(),
 		})
 		artifactPaths = append(artifactPaths, relPath)
+	}
+
+	// For delta releases, carry over unchanged artifacts from base release
+	for _, baseArt := range baseArtifacts {
+		if _, inDelta := verifyRes.Files[baseArt.RelPath]; !inDelta {
+			destPath := filepath.Join(serviceNamespaceDir, filepath.FromSlash(baseArt.RelPath))
+			if linkErr := imp.cas.Link(baseArt.SHA256Hash, destPath); linkErr != nil {
+				return nil, fmt.Errorf("failed linking base artifact %s: %w", baseArt.RelPath, linkErr)
+			}
+			artID := fmt.Sprintf("%s-%s", releaseID, baseArt.SHA256Hash[:12])
+			releaseArtifacts = append(releaseArtifacts, store.ReleaseArtifact{
+				ID:         artID,
+				ReleaseID:  releaseID,
+				RelPath:    baseArt.RelPath,
+				SHA256Hash: baseArt.SHA256Hash,
+				SizeBytes:  baseArt.SizeBytes,
+				CreatedAt:  time.Now().UTC(),
+			})
+			artifactPaths = append(artifactPaths, baseArt.RelPath)
+			totalBytes += baseArt.SizeBytes
+		}
 	}
 
 	// 4. Register Release in SQLite Database

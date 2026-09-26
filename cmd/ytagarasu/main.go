@@ -28,6 +28,7 @@ import (
 
 	"github.com/sh0jitmy/ytagarasu/internal/audit"
 	"github.com/sh0jitmy/ytagarasu/internal/bundle"
+	"github.com/sh0jitmy/ytagarasu/internal/delta"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/sh0jitmy/ytagarasu/internal/pkgengine"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
@@ -159,8 +160,18 @@ func main() {
 								Name:  "force",
 								Usage: "Allow building bundle even if evaluation status is warning",
 							},
+							&cli.StringFlag{
+								Name:  "delta-from",
+								Usage: "Path to previous release bundle (.tar.gz) to build a delta bundle",
+							},
 						},
 						Action: runBundleExport,
+					},
+					{
+						Name:      "diff",
+						Usage:     "Compare two deployment bundles and display differential asset metrics",
+						ArgsUsage: "<base-bundle.tar.gz> <target-bundle.tar.gz>",
+						Action:    runBundleDiff,
 					},
 					{
 						Name:      "verify",
@@ -441,6 +452,37 @@ func runBundleExport(c *cli.Context) error {
 		}
 	}
 
+	deltaFrom := c.String("delta-from")
+	if deltaFrom != "" {
+		fmt.Printf("==> Building DELTA deployment bundle against base: %s\n", deltaFrom)
+		if outputPath == "" {
+			outputPath = "bundle-delta.tar.gz"
+		}
+		diffReport, err := delta.BuildDeltaBundle(delta.BuildDeltaOptions{
+			BaseBundlePath: deltaFrom,
+			ManifestPath:   manifestPath,
+			SourceDir:      sourceDir,
+			OutputFile:     outputPath,
+			ReportPath:     reportPath,
+			PrivateKey:     privKey,
+		})
+		if err != nil {
+			return fmt.Errorf("failed building delta bundle: %w", err)
+		}
+		baseChecksumPrefix := diffReport.BaseChecksum
+		if len(baseChecksumPrefix) > 12 {
+			baseChecksumPrefix = baseChecksumPrefix[:12]
+		}
+		fmt.Printf("✅ Successfully built and signed DELTA bundle!\n")
+		fmt.Printf("  • Base Release:     %s (checksum: %s...)\n", diffReport.BaseRelease, baseChecksumPrefix)
+		fmt.Printf("  • Target Release:   %s\n", diffReport.TargetRelease)
+		fmt.Printf("  • Output Archive:   %s (%d bytes)\n", outputPath, diffReport.DeltaSizeBytes)
+		fmt.Printf("  • Size Reduction:   %.2f%% (from %d bytes)\n", diffReport.ReductionPercent, diffReport.FullSizeBytes)
+		fmt.Printf("  • Files Packaged:   %d added, %d modified (omitted %d unchanged)\n",
+			diffReport.AddedCount, diffReport.ModifiedCount, diffReport.UnchangedCount)
+		return nil
+	}
+
 	opts := bundle.BuildOptions{
 		ManifestPath:       manifestPath,
 		SourceDir:          sourceDir,
@@ -469,6 +511,47 @@ func runBundleExport(c *cli.Context) error {
 	if reportPath != "" {
 		fmt.Printf("  Evaluation Report: %s\n", reportPath)
 	}
+	return nil
+}
+
+func runBundleDiff(c *cli.Context) error {
+	if c.NArg() < 2 {
+		return fmt.Errorf("usage: ytagarasu bundle diff <base-bundle.tar.gz> <target-bundle.tar.gz>")
+	}
+	baseBundle := c.Args().Get(0)
+	targetBundle := c.Args().Get(1)
+
+	fmt.Printf("==> Computing differential metrics between:\n")
+	fmt.Printf("  Base:   %s\n", baseBundle)
+	fmt.Printf("  Target: %s\n\n", targetBundle)
+
+	report, err := delta.ComputeDiff(baseBundle, targetBundle)
+	if err != nil {
+		return fmt.Errorf("diff computation failed: %w", err)
+	}
+
+	fmt.Printf("Differential Summary (%s -> %s):\n", report.BaseRelease, report.TargetRelease)
+	fmt.Printf("  • Added files:     %d\n", report.AddedCount)
+	fmt.Printf("  • Modified files:  %d\n", report.ModifiedCount)
+	fmt.Printf("  • Deleted files:   %d\n", report.DeletedCount)
+	fmt.Printf("  • Unchanged files: %d\n", report.UnchangedCount)
+	fmt.Printf("  • Full size:       %d bytes\n", report.FullSizeBytes)
+	fmt.Printf("  • Delta est. size: %d bytes\n", report.DeltaSizeBytes)
+	fmt.Printf("  • Transfer saving: %.2f%%\n\n", report.ReductionPercent)
+
+	fmt.Printf("%-10s | %-40s | %-12s | %s\n", "CHANGE", "FILE PATH", "SIZE", "HASH")
+	fmt.Println("-----------+------------------------------------------+--------------+------------------")
+	for _, f := range report.Files {
+		h := f.NewHash
+		if h == "" {
+			h = f.OldHash
+		}
+		if len(h) > 12 {
+			h = h[:12]
+		}
+		fmt.Printf("%-10s | %-40s | %-12d | %s\n", f.ChangeType, f.Path, f.NewSize, h)
+	}
+
 	return nil
 }
 
