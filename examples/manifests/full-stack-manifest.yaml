@@ -1,0 +1,176 @@
+version: "1.0"
+bundleVersion: "2026.09.26.1"
+release: "1.4.2"
+createdAt: "2026-09-26T10:00:00Z"
+expiresAt: "2027-09-26T10:00:00Z"
+author: "Platform Engineering Team <release@example.internal>"
+
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+  - os: "rhel"
+    release: "9"
+    arch: "amd64"
+
+# 配備対象アプリケーション群 (ノードセレクタと配備先パスを明記)
+applications:
+  # 1. Golang アプリケーション (API サーバー)
+  - name: "core-api"
+    type: "golang"
+    selector:
+      roles: ["api"]
+    artifact: "artifacts/golang/api-server"
+    destination: "/usr/local/bin/api-server"
+    permissions: "0755"
+    owner: "app"
+    group: "app"
+
+  # 2. Python アプリケーション (データ処理 / ML API)
+  - name: "ml-worker"
+    type: "python"
+    selector:
+      roles: ["worker"]
+    sourceDir: "artifacts/python/app"
+    destination: "/opt/ml-worker/app"
+    venvPath: "/opt/ml-worker/venv"
+    wheelsDir: "artifacts/python/wheels"
+    requirementsFile: "artifacts/python/requirements.lock"
+    pythonBinary: "/usr/bin/python3"
+    owner: "app"
+    group: "app"
+
+  # 3. React フロントエンド (SPA)
+  - name: "admin-portal"
+    type: "react"
+    selector:
+      roles: ["web"]
+    distDir: "artifacts/react/dist"
+    destination: "/var/www/admin-portal"
+    owner: "www-data"
+    group: "www-data"
+
+  # 4. HTMX ダッシュボード (Go 内包またはサーバー駆動UI)
+  - name: "htmx-dashboard"
+    type: "htmx"
+    selector:
+      roles: ["api"]
+    embeddedIn: "core-api"
+
+# OSパッケージ依存定義
+packages:
+  ubuntu-24.04-amd64:
+    manager: "apt"
+    items:
+      - name: "libssl3"
+        version: "3.0.13-0ubuntu3.4"
+        selector:
+          roles: ["api", "worker"]
+      - name: "python3"
+        version: "3.12.3-0ubuntu1"
+        selector:
+          roles: ["worker"]
+      - name: "python3-venv"
+        version: "3.12.3-0ubuntu1"
+        selector:
+          roles: ["worker"]
+      - name: "nginx"
+        version: "1.24.0-2ubuntu7"
+        selector:
+          roles: ["web"]
+      - name: "ca-certificates"
+        version: "20240203"
+        selector:
+          roles: ["*"]
+
+  rhel-9-amd64:
+    manager: "dnf"
+    items:
+      - name: "openssl-libs"
+        version: "3.0.7-27.el9"
+
+# アプリケーションサーバー TLS 証明書 & 秘密鍵の管理・配備定義
+certificates:
+  - name: "core-api-tls"
+    selector:
+      roles: ["api"]
+    certPath: "/etc/ssl/certs/core-api.crt"
+    keyPath: "/etc/ssl/private/core-api.key"
+    permissions: "0600"
+    owner: "app"
+    group: "app"
+    provisioning: "acme"
+    acmeServer: "https://ytagarasu-server:9000/acme/acme/directory"
+    commonName: "api.example.internal"
+    dnsNames: ["api.example.internal", "localhost"]
+    ipAddresses: ["127.0.0.1"]
+    autoRenewDaysBeforeExpiry: 30
+    reloadService: "core-api"
+  - name: "nginx-web-tls"
+    selector:
+      roles: ["web"]
+    certPath: "/etc/ssl/certs/web.crt"
+    keyPath: "/etc/ssl/private/web.key"
+    permissions: "0600"
+    owner: "root"
+    group: "root"
+    provisioning: "encrypted_sops"
+    encryptedKeyArtifact: "configs/certs/web.key.enc"
+    certArtifact: "configs/certs/web.crt"
+    reloadService: "nginx"
+
+# 設定ファイル配置定義 (CNCF SOPS 暗号化シークレット対応)
+configs:
+  - template: "configs/app.yaml.tmpl"
+    destination: "/etc/ytagarasu/app.yaml"
+    permissions: "0640"
+    owner: "app"
+    group: "app"
+    sopsEncrypted: true
+    schema: "configs/schema.json"
+    validateCommand: "/usr/local/bin/api-server --validate-config {{.TempFile}}"
+    selector:
+      roles: ["api"]
+
+# systemd サービス制御定義
+services:
+  - name: "core-api"
+    action: "restart"
+    unitFile: "configs/core-api.service"
+    timeoutSeconds: 30
+    selector:
+      roles: ["api"]
+  - name: "ml-worker"
+    action: "restart"
+    unitFile: "configs/ml-worker.service"
+    timeoutSeconds: 30
+    selector:
+      roles: ["worker"]
+  - name: "nginx"
+    action: "reload"
+    timeoutSeconds: 15
+    selector:
+      roles: ["web"]
+
+# ヘルスチェック定義
+healthChecks:
+  - type: "http"
+    endpoint: "http://127.0.0.1:8080/v1/system/healthz"
+    expectedStatus: 200
+    intervalSeconds: 2
+    maxRetries: 10
+    selector:
+      roles: ["api"]
+  - type: "command"
+    command: "/usr/local/bin/api-server --health-check"
+    expectedExitCode: 0
+    intervalSeconds: 5
+    maxRetries: 3
+    selector:
+      roles: ["api"]
+
+# ロールバックポリシー
+rollback:
+  autoOnFailure: true
+  strategy: "immediate"
+  preserveBackupGenerations: 3

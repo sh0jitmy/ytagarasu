@@ -1,0 +1,73 @@
+version: "1.0"
+bundleVersion: "2026.09.26.1"
+release: "3.0.0"
+createdAt: "2026-09-26T10:00:00Z"
+author: "Frontend Team <frontend@example.internal>"
+
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+
+applications:
+  - name: "customer-portal"
+    type: "react"
+    selector:
+      roles: ["web"]
+    distDir: "artifacts/react/dist"
+    destination: "/var/www/customer-portal"
+    owner: "www-data"
+    group: "www-data"
+
+packages:
+  ubuntu-24.04-amd64:
+    manager: "apt"
+    items:
+      - name: "nginx"
+        version: "1.24.0-2ubuntu7"
+        selector:
+          roles: ["web"]
+
+certificates:
+  - name: "customer-portal-tls"
+    selector:
+      roles: ["web"]
+    certPath: "/etc/ssl/certs/portal.crt"
+    keyPath: "/etc/ssl/private/portal.key"
+    permissions: "0600"
+    owner: "root"
+    group: "root"
+    provisioning: "encrypted_sops"
+    encryptedKeyArtifact: "configs/certs/portal.key.enc"
+    certArtifact: "configs/certs/portal.crt"
+    reloadService: "nginx"
+
+configs:
+  - template: "configs/nginx-portal.conf.tmpl"
+    destination: "/etc/nginx/sites-available/customer-portal.conf"
+    permissions: "0644"
+    owner: "root"
+    group: "root"
+    selector:
+      roles: ["web"]
+
+services:
+  - name: "nginx"
+    action: "reload"
+    timeoutSeconds: 15
+    selector:
+      roles: ["web"]
+
+healthChecks:
+  - type: "http"
+    endpoint: "http://127.0.0.1:80/healthz"
+    expectedStatus: 200
+    intervalSeconds: 2
+    maxRetries: 5
+    selector:
+      roles: ["web"]
+
+rollback:
+  autoOnFailure: true
+  strategy: "immediate"
+  preserveBackupGenerations: 3

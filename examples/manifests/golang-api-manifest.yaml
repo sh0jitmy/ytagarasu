@@ -1,0 +1,70 @@
+version: "1.0"
+bundleVersion: "2026.09.26.1"
+release: "2.1.0"
+createdAt: "2026-09-26T10:00:00Z"
+expiresAt: "2027-09-26T10:00:00Z"
+author: "API Team <api-team@example.internal>"
+
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+
+applications:
+  - name: "payment-api"
+    type: "golang"
+    selector:
+      roles: ["api"]
+    artifact: "artifacts/golang/payment-api"
+    destination: "/usr/local/bin/payment-api"
+    permissions: "0755"
+    owner: "app"
+    group: "app"
+
+certificates:
+  - name: "payment-api-tls"
+    selector:
+      roles: ["api"]
+    certPath: "/etc/ssl/certs/payment-api.crt"
+    keyPath: "/etc/ssl/private/payment-api.key"
+    permissions: "0600"
+    owner: "app"
+    group: "app"
+    provisioning: "acme"
+    acmeServer: "https://ytagarasu-server:9000/acme/acme/directory"
+    commonName: "payment.example.internal"
+    dnsNames: ["payment.example.internal"]
+    autoRenewDaysBeforeExpiry: 30
+    reloadService: "payment-api"
+
+configs:
+  - template: "configs/payment.yaml.tmpl"
+    destination: "/etc/ytagarasu/payment.yaml"
+    permissions: "0640"
+    owner: "app"
+    group: "app"
+    sopsEncrypted: true
+    selector:
+      roles: ["api"]
+
+services:
+  - name: "payment-api"
+    action: "restart"
+    unitFile: "configs/payment-api.service"
+    timeoutSeconds: 30
+    selector:
+      roles: ["api"]
+
+healthChecks:
+  - type: "http"
+    endpoint: "http://127.0.0.1:8080/healthz"
+    expectedStatus: 200
+    intervalSeconds: 2
+    maxRetries: 5
+    selector:
+      roles: ["api"]
+
+rollback:
+  autoOnFailure: true
+  strategy: "immediate"
+  preserveBackupGenerations: 3

@@ -1,0 +1,49 @@
+version: "1.0"
+bundleVersion: "2026.09.26.1"
+release: "1.0.0"
+createdAt: "2026-09-26T10:00:00Z"
+author: "Ops Tooling Team <ops@example.internal>"
+
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+
+applications:
+  - name: "ops-dashboard"
+    type: "golang"
+    selector:
+      roles: ["ops"]
+    artifact: "artifacts/golang/ops-dashboard"
+    destination: "/usr/local/bin/ops-dashboard"
+    permissions: "0755"
+    owner: "app"
+    group: "app"
+
+  - name: "htmx-views"
+    type: "htmx"
+    selector:
+      roles: ["ops"]
+    embeddedIn: "ops-dashboard"
+
+services:
+  - name: "ops-dashboard"
+    action: "restart"
+    unitFile: "configs/ops-dashboard.service"
+    timeoutSeconds: 30
+    selector:
+      roles: ["ops"]
+
+healthChecks:
+  - type: "http"
+    endpoint: "http://127.0.0.1:9090/healthz"
+    expectedStatus: 200
+    intervalSeconds: 2
+    maxRetries: 5
+    selector:
+      roles: ["ops"]
+
+rollback:
+  autoOnFailure: true
+  strategy: "immediate"
+  preserveBackupGenerations: 2
