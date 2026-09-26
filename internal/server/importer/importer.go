@@ -194,6 +194,12 @@ func (imp *Importer) Import(ctx context.Context, r io.Reader, expectedPubKeyHex 
 		return nil, fmt.Errorf("failed registering release in database: %w", err)
 	}
 
+	// 5. Append audit trail log
+	auditPayload := fmt.Sprintf("service=%s, version=%s, files=%d, total_bytes=%d", serviceID, releaseVersion, len(releaseArtifacts), totalBytes)
+	if _, auditErr := imp.db.AppendAuditLog(ctx, "release.import", releaseID, "bundle-importer", []byte(auditPayload)); auditErr != nil {
+		return nil, fmt.Errorf("failed appending release import to audit log: %w", auditErr)
+	}
+
 	return &Result{
 		ReleaseID:      releaseID,
 		ServiceID:      serviceID,

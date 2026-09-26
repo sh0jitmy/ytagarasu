@@ -24,9 +24,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/sh0jitmy/ytagarasu/internal/audit"
 	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 )
@@ -69,15 +71,86 @@ func (s *Server) routes() {
 	// Bundles & Reports
 	s.mux.HandleFunc("POST /api/v1/bundles/import", s.handleBundleImport)
 	s.mux.HandleFunc("POST /api/v1/audit/logs", s.handleAuditLogs)
+	s.mux.HandleFunc("GET /api/v1/audit/records", s.handleListAuditRecords)
+	s.mux.HandleFunc("GET /api/v1/audit/verify", s.handleVerifyAuditTrail)
 
 	// Virtual Repositories
 	s.mux.HandleFunc("GET /repos/", s.handleRepos)
 }
 
+type auditLogRequest struct {
+	EventType string `json:"event_type"`
+	EntityID  string `json:"entity_id"`
+	Actor     string `json:"actor"`
+	Payload   string `json:"payload"`
+}
+
 func (s *Server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
+	var req auditLogRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid audit log body: %v", err))
+		return
+	}
+	if req.EventType == "" {
+		req.EventType = "system.event"
+	}
+	if req.EntityID == "" {
+		req.EntityID = "system"
+	}
+	if req.Actor == "" {
+		req.Actor = "anonymous"
+	}
+
+	rec, err := s.db.AppendAuditLog(r.Context(), req.EventType, req.EntityID, req.Actor, []byte(req.Payload))
+	if err != nil {
+		s.writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed appending audit log: %v", err))
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "received"})
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(rec)
+}
+
+func (s *Server) handleListAuditRecords(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+	limit := 100
+	offset := 0
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+	if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+		offset = o
+	}
+
+	records, err := s.db.ListAuditLogs(r.Context(), limit, offset)
+	if err != nil {
+		s.writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed listing audit records: %v", err))
+		return
+	}
+	if records == nil {
+		records = []audit.Record{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(records)
+}
+
+func (s *Server) handleVerifyAuditTrail(w http.ResponseWriter, r *http.Request) {
+	report, err := s.db.VerifyAuditTrail(r.Context())
+	if err != nil {
+		s.writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed verifying audit trail: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !report.Valid {
+		w.WriteHeader(http.StatusConflict) // 409 Conflict if tampered
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+	_ = json.NewEncoder(w).Encode(report)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
