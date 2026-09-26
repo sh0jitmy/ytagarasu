@@ -21,7 +21,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent"
+	"github.com/sh0jitmy/ytagarasu/ent"
 )
 
 // PurgeResult summarizes the number of deleted records across tables.

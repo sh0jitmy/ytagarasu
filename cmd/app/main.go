@@ -32,9 +32,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/database"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/version"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/web"
+	"github.com/sh0jitmy/ytagarasu/internal/database"
+	"github.com/sh0jitmy/ytagarasu/internal/version"
+	"github.com/sh0jitmy/ytagarasu/internal/web"
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"

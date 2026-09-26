@@ -29,8 +29,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/bundle"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/server/store"
+	"github.com/sh0jitmy/ytagarasu/internal/bundle"
+	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 )
 
 // Result contains metadata of a successfully imported release bundle.

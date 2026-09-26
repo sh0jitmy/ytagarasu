@@ -27,9 +27,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/database"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/version"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/web"
+	"github.com/sh0jitmy/ytagarasu/internal/database"
+	"github.com/sh0jitmy/ytagarasu/internal/version"
+	"github.com/sh0jitmy/ytagarasu/internal/web"
 	"github.com/urfave/cli/v2"
 )
 

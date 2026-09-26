@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/bundle"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/manifest"
+	"github.com/sh0jitmy/ytagarasu/internal/bundle"
+	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

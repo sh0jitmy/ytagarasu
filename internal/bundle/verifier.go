@@ -30,7 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/manifest"
+	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 )
 
 // VerificationResult contains the inspection findings of a bundle archive.

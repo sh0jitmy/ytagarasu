@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent"
+	"github.com/sh0jitmy/ytagarasu/ent"
 	// required by schema hooks.
-	_ "github.com/shjtmy/go_sh0jitmy_template/ent/runtime"
+	_ "github.com/sh0jitmy/ytagarasu/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/shjtmy/go_sh0jitmy_template/ent/migrate"
+	"github.com/sh0jitmy/ytagarasu/ent/migrate"
 )
 
 type (

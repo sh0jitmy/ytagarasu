@@ -28,10 +28,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/bundle"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/server/handler"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/server/importer"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/server/store"
+	"github.com/sh0jitmy/ytagarasu/internal/bundle"
+	"github.com/sh0jitmy/ytagarasu/internal/server/handler"
+	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
+	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

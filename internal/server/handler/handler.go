@@ -27,8 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/server/importer"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/server/store"
+	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
+	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 )
 
 // Server provides HTTP API routing and static repository hosting.

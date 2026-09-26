@@ -9,12 +9,12 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent/migrate"
+	"github.com/sh0jitmy/ytagarasu/ent/migrate"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
-	"github.com/shjtmy/go_sh0jitmy_template/ent/user"
+	"github.com/sh0jitmy/ytagarasu/ent/user"
 )
 
 // Client is the client that holds all ent builders.

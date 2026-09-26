@@ -9,7 +9,7 @@ metadata:
   version: "1.0.0"
   openclaw:
     emoji: "🗄️"
-    homepage: https://github.com/shjtmy/go_sh0jitmy_template
+    homepage: https://github.com/sh0jitmy/ytagarasu
     requires:
       bins:
         - go
