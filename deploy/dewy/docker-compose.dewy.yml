@@ -1,0 +1,26 @@
+# Dewy Docker Compose Stack (Local Verification)
+# Usage: docker compose -f deploy/dewy/docker-compose.dewy.yml up
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      - APP_ENV=production
+      - DB_TYPE=sqlite
+      - DB_DSN=/data/app.db
+    volumes:
+      - app-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  app-data:

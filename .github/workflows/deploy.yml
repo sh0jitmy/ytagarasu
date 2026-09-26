@@ -1,0 +1,78 @@
+name: Build, Release and Deploy
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --force --tags
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Determine Release Version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@9ed2f89a662bf1735a48bc8557fd212fa902bebf # v6.3.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional: Upload to S3-compatible object storage for Dewy pull-deploy
+      # Uncomment and configure when S3 secrets are available
+      # - name: Install SOPS
+      #   if: env.SOPS_AGE_KEY != ''
+      #   run: |
+      #     SOPS_VER="3.8.1"
+      #     curl -LO "https://github.com/getsops/sops/releases/download/v${SOPS_VER}/sops_${SOPS_VER}_amd64.deb"
+      #     sudo dpkg -i sops_${SOPS_VER}_amd64.deb
+      #   env:
+      #     SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+      #
+      # - name: Upload to S3 for Dewy
+      #   if: env.S3_BUCKET != ''
+      #   env:
+      #     S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      #     S3_PREFIX: ${{ vars.S3_PREFIX || 'app' }}
+      #     S3_ENDPOINT: ${{ vars.S3_ENDPOINT || 'https://s3.tky01.sakurastorage.jp' }}
+      #     S3_REGION: ${{ vars.S3_REGION || 'jp-east-1' }}
+      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+      #   run: |
+      #     echo "Uploading release artifacts to S3 for Dewy pull-deploy..."
+      #     # Add your dewyctl or S3 upload commands here

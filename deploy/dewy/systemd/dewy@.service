@@ -1,0 +1,19 @@
+[Unit]
+Description=Dewy Pull-Deploy Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dewy server \
+  --artifact %i \
+  --command "/usr/local/bin/%i" \
+  --interval 10s
+EnvironmentFile=/etc/dewy/dewy.env
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

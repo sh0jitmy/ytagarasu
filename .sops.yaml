@@ -1,0 +1,5 @@
+# SOPS Encryption Configuration
+# Encrypt secrets.yml with age public key
+creation_rules:
+  - path_regex: secrets\.yml$
+    age: 'age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
