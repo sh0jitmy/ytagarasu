@@ -1,0 +1,96 @@
+---
+# Tasks for roles/deploy_agent
+# Ytagarasu Autonomous Deployment Agent Bootstrap Role
+
+- name: deploy-agent 実行グループを作成
+  ansible.builtin.group:
+    name: "{{ deploy_agent_group }}"
+    state: present
+    system: "{{ deploy_agent_system_user }}"
+
+- name: deploy-agent 実行ユーザーを作成
+  ansible.builtin.user:
+    name: "{{ deploy_agent_user }}"
+    group: "{{ deploy_agent_group }}"
+    home: "{{ deploy_agent_state_dir }}"
+    shell: /usr/sbin/nologin
+    system: "{{ deploy_agent_system_user }}"
+    create_home: false
+
+- name: 必要なディレクトリ群を作成
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_agent_user }}"
+    group: "{{ deploy_agent_group }}"
+    mode: '0750'
+  loop:
+    - "{{ deploy_agent_config_dir }}"
+    - "{{ deploy_agent_state_dir }}"
+    - "{{ deploy_agent_state_dir }}/backups"
+    - "{{ deploy_agent_log_dir }}"
+
+- name: deploy-agent バイナリを配置
+  ansible.builtin.copy:
+    src: "{{ deploy_agent_binary_src }}"
+    dest: "{{ deploy_agent_binary_dest }}"
+    owner: root
+    group: root
+    mode: '0755'
+  when: deploy_agent_binary_src is defined and deploy_agent_binary_src != ""
+
+- name: トラストアンカー公開鍵 (Ed25519) を配置
+  ansible.builtin.copy:
+    src: "{{ deploy_agent_release_signer_key }}"
+    dest: "{{ deploy_agent_config_dir }}/release-signer.pub"
+    owner: root
+    group: root
+    mode: '0644'
+  when: deploy_agent_release_signer_key is defined and deploy_agent_release_signer_key != ""
+
+- name: エージェント設定ファイル初期配置
+  ansible.builtin.template:
+    src: agent.yaml.j2
+    dest: "{{ deploy_agent_config_dir }}/agent.yaml"
+    owner: "{{ deploy_agent_user }}"
+    group: "{{ deploy_agent_group }}"
+    mode: '0640'
+  notify: Restart ytagarasu-agent
+
+- name: 最小権限の sudoers 設定を投入
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/deploy-agent
+    content: |
+      # deploy-agent がパッケージ更新とサービス再起動のみを実行可能にする最小設定
+      {{ deploy_agent_user }} ALL=(ALL) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get install *, /usr/bin/dnf install *, /bin/systemctl reload *, /bin/systemctl restart *, /bin/systemctl status *
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+
+- name: systemd サービスユニットを登録
+  ansible.builtin.template:
+    src: ytagarasu-agent.service.j2
+    dest: "/etc/systemd/system/{{ deploy_agent_service_name }}.service"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart ytagarasu-agent
+
+- name: systemd サービスユニットを再読み込み・起動
+  ansible.builtin.systemd:
+    name: "{{ deploy_agent_service_name }}"
+    enabled: "{{ deploy_agent_enable_service }}"
+    state: "{{ deploy_agent_state }}"
+    daemon_reload: true
+  when: deploy_agent_enable_service | bool
+
+- name: プライベート CA ルート証明書をシステムストアへ追加
+  ansible.builtin.copy:
+    src: "{{ deploy_agent_ca_cert }}"
+    dest: /usr/local/share/ca-certificates/ytagarasu-ca.crt
+    owner: root
+    group: root
+    mode: '0644'
+  when: deploy_agent_ca_cert is defined and deploy_agent_ca_cert != ""
+  notify: Update CA trust

@@ -1,0 +1,13 @@
+# Example Ansible Inventory for Air-gapped Target Servers
+[web_servers]
+web-node-01 ansible_host=192.168.10.21 deploy_agent_roles='["web", "frontend"]' deploy_agent_service_id="payment-web"
+web-node-02 ansible_host=192.168.10.22 deploy_agent_roles='["web", "frontend"]' deploy_agent_service_id="payment-web"
+
+[api_servers]
+api-node-01 ansible_host=192.168.10.31 deploy_agent_roles='["api", "backend"]' deploy_agent_service_id="payment-api"
+api-node-02 ansible_host=192.168.10.32 deploy_agent_roles='["api", "backend"]' deploy_agent_service_id="payment-api"
+
+[all:vars]
+ansible_user=ubuntu
+ansible_ssh_private_key_file=~/.ssh/id_ed25519
+deploy_agent_server_url=http://192.168.10.10:8080

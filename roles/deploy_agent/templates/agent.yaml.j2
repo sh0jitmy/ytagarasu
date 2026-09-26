@@ -1,0 +1,12 @@
+# Ansible managed: /etc/ytagarasu/agent.yaml
+# Ytagarasu Autonomous Deployment Agent Configuration
+---
+server: "{{ deploy_agent_server_url }}"
+service: "{{ deploy_agent_service_id }}"
+interval: "{{ deploy_agent_poll_interval }}"
+state_dir: "{{ deploy_agent_state_dir }}"
+install_dir: "{{ deploy_agent_install_dir }}"
+roles:
+{% for role in deploy_agent_roles %}
+  - "{{ role }}"
+{% endfor %}

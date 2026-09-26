@@ -1,0 +1,26 @@
+# Ansible managed: /etc/systemd/system/{{ deploy_agent_service_name }}.service
+[Unit]
+Description=Ytagarasu Autonomous Offline Deployment Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ deploy_agent_user }}
+Group={{ deploy_agent_group }}
+ExecStart={{ deploy_agent_binary_dest }} --config {{ deploy_agent_config_dir }}/agent.yaml
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={{ deploy_agent_service_name }}
+
+# Hardening / Sandboxing
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
