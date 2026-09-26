@@ -186,3 +186,63 @@ func TestHandler_BundleImport_And_VirtualRepos(t *testing.T) {
 	srv.Handler().ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestHandler_AuditRecordsAndVerification(t *testing.T) {
+	t.Parallel()
+
+	srv, _, bundleBytes := setupTestServer(t)
+
+	// 1. Initial verify before import
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/verify", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// 2. Import bundle (this automatically appends an audit record)
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("bundle", "bundle.tar.gz")
+	require.NoError(t, err)
+	_, err = io.Copy(part, bytes.NewReader(bundleBytes))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/bundles/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	// 3. Post additional audit log
+	auditPayload := `{"event_type":"agent.deploy.success","entity_id":"demo-service","actor":"agent:web-01","payload":"deployed successfully"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/audit/logs", bytes.NewBufferString(auditPayload))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	// 4. List audit records
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/audit/records", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var records []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &records))
+	assert.Len(t, records, 2)
+	assert.Equal(t, 1, int(records[0]["sequence"].(float64)))
+	assert.Equal(t, "release.import", records[0]["event_type"])
+	assert.Equal(t, 2, int(records[1]["sequence"].(float64)))
+	assert.Equal(t, "agent.deploy.success", records[1]["event_type"])
+
+	// 5. Verify audit chain
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/audit/verify", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var report map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &report))
+	assert.Equal(t, true, report["valid"])
+	assert.Equal(t, 2, int(report["total_records"].(float64)))
+}

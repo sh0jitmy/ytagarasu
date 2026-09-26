@@ -159,3 +159,60 @@ func TestDB_RegisterAndQuery(t *testing.T) {
 	assert.Equal(t, "art-2", artifacts[0].ID)
 	assert.Equal(t, "hash2", artifacts[0].SHA256Hash)
 }
+
+func TestDB_AuditLogAndVerification(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := store.NewDB(dsn)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	// 1. Initial report on empty audit log
+	report, err := db.VerifyAuditTrail(ctx)
+	require.NoError(t, err)
+	assert.True(t, report.Valid)
+	assert.Equal(t, 0, report.TotalRecords)
+
+	// 2. Append records
+	rec1, err := db.AppendAuditLog(ctx, "release.import", "rel-1", "importer", []byte("bundle 1 payload"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), rec1.Sequence)
+
+	rec2, err := db.AppendAuditLog(ctx, "agent.deploy.start", "rel-1", "agent:srv-1", []byte("deploy started"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), rec2.Sequence)
+	assert.Equal(t, rec1.RecordHash, rec2.PrevRecordHash)
+
+	rec3, err := db.AppendAuditLog(ctx, "agent.deploy.success", "rel-1", "agent:srv-1", []byte("deploy completed"))
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), rec3.Sequence)
+	assert.Equal(t, rec2.RecordHash, rec3.PrevRecordHash)
+
+	// 3. List records
+	list, err := db.ListAuditLogs(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, list, 3)
+	assert.Equal(t, int64(1), list[0].Sequence)
+	assert.Equal(t, int64(2), list[1].Sequence)
+	assert.Equal(t, int64(3), list[2].Sequence)
+
+	// 4. Verify valid chain
+	report, err = db.VerifyAuditTrail(ctx)
+	require.NoError(t, err)
+	assert.True(t, report.Valid)
+	assert.Equal(t, 3, report.TotalRecords)
+	assert.Equal(t, int64(3), report.LastSequence)
+	assert.Empty(t, report.Errors)
+
+	// 5. Simulate unauthorized SQL tampering (e.g., malicious update to payload_digest)
+	_, err = db.DB().ExecContext(ctx, "UPDATE audit_log SET payload_digest = 'malicious_digest' WHERE sequence = 2;")
+	require.NoError(t, err)
+
+	report, err = db.VerifyAuditTrail(ctx)
+	require.NoError(t, err)
+	assert.False(t, report.Valid)
+	assert.NotEmpty(t, report.Errors)
+	assert.Contains(t, report.Errors[0], "tampered record hash at sequence 2")
+}

@@ -27,6 +27,7 @@ import (
 	"time"
 
 	sqlite "github.com/glebarez/go-sqlite"
+	"github.com/sh0jitmy/ytagarasu/internal/audit"
 )
 
 var (
@@ -168,6 +169,19 @@ func (s *DB) initSchema(ctx context.Context) error {
 
 	CREATE INDEX IF NOT EXISTS idx_releases_service ON releases(service_id, status);
 	CREATE INDEX IF NOT EXISTS idx_artifacts_release ON release_artifacts(release_id);
+
+	CREATE TABLE IF NOT EXISTS audit_log (
+		sequence INTEGER PRIMARY KEY,
+		timestamp DATETIME NOT NULL,
+		event_type TEXT NOT NULL,
+		entity_id TEXT NOT NULL,
+		actor TEXT NOT NULL,
+		payload_digest TEXT NOT NULL,
+		prev_record_hash TEXT NOT NULL,
+		record_hash TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event_type, timestamp);
 	`
 	_, err := s.db.ExecContext(ctx, schema)
 	return err
@@ -176,6 +190,11 @@ func (s *DB) initSchema(ctx context.Context) error {
 // Close closes the underlying database connection.
 func (s *DB) Close() error {
 	return s.db.Close()
+}
+
+// DB returns the underlying sql.DB instance (for transactions or testing).
+func (s *DB) DB() *sql.DB {
+	return s.db
 }
 
 // RegisterRelease atomically saves the release, marks previous active releases as inactive,
@@ -319,4 +338,105 @@ func (s *DB) GetReleaseArtifacts(ctx context.Context, releaseID string) ([]Relea
 		return nil, fmt.Errorf("error during artifacts iteration: %w", err)
 	}
 	return artifacts, nil
+}
+
+// AppendAuditLog atomically appends a new audit record to the hash chain.
+func (s *DB) AppendAuditLog(ctx context.Context, eventType, entityID, actor string, payload []byte) (*audit.Record, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed beginning audit tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var lastSeq int64
+	var lastHash string
+	row := tx.QueryRowContext(ctx, "SELECT sequence, record_hash FROM audit_log ORDER BY sequence DESC LIMIT 1;")
+	if err := row.Scan(&lastSeq, &lastHash); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("failed fetching latest audit record: %w", err)
+		}
+		lastSeq = 0
+		lastHash = audit.GenesisHash
+	}
+
+	newSeq := lastSeq + 1
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+	rec := audit.NewRecord(lastHash, newSeq, now, eventType, entityID, actor, payload)
+
+	insertQuery := `
+	INSERT INTO audit_log (sequence, timestamp, event_type, entity_id, actor, payload_digest, prev_record_hash, record_hash)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+	`
+	if _, err := tx.ExecContext(ctx, insertQuery, rec.Sequence, nowStr, rec.EventType, rec.EntityID, rec.Actor, rec.PayloadDigest, rec.PrevRecordHash, rec.RecordHash); err != nil {
+		return nil, fmt.Errorf("failed inserting audit record: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed committing audit record: %w", err)
+	}
+
+	return &rec, nil
+}
+
+// ListAuditLogs returns paginated audit records ordered by sequence.
+func (s *DB) ListAuditLogs(ctx context.Context, limit, offset int) ([]audit.Record, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	query := "SELECT sequence, timestamp, event_type, entity_id, actor, payload_digest, prev_record_hash, record_hash FROM audit_log ORDER BY sequence ASC LIMIT ? OFFSET ?;"
+	rows, err := s.db.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed querying audit log: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var records []audit.Record
+	for rows.Next() {
+		var rec audit.Record
+		var tsStr string
+		if err := rows.Scan(&rec.Sequence, &tsStr, &rec.EventType, &rec.EntityID, &rec.Actor, &rec.PayloadDigest, &rec.PrevRecordHash, &rec.RecordHash); err != nil {
+			return nil, fmt.Errorf("failed scanning audit row: %w", err)
+		}
+		if t, parseErr := time.Parse(time.RFC3339, tsStr); parseErr == nil {
+			rec.Timestamp = t
+		}
+		records = append(records, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during audit rows iteration: %w", err)
+	}
+	return records, nil
+}
+
+// VerifyAuditTrail reads all audit logs and verifies the mathematical integrity of the hash chain.
+func (s *DB) VerifyAuditTrail(ctx context.Context) (*audit.VerificationReport, error) {
+	query := "SELECT sequence, timestamp, event_type, entity_id, actor, payload_digest, prev_record_hash, record_hash FROM audit_log ORDER BY sequence ASC;"
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed querying audit trail for verification: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var records []audit.Record
+	for rows.Next() {
+		var rec audit.Record
+		var tsStr string
+		if err := rows.Scan(&rec.Sequence, &tsStr, &rec.EventType, &rec.EntityID, &rec.Actor, &rec.PayloadDigest, &rec.PrevRecordHash, &rec.RecordHash); err != nil {
+			return nil, fmt.Errorf("failed scanning audit row: %w", err)
+		}
+		if t, parseErr := time.Parse(time.RFC3339, tsStr); parseErr == nil {
+			rec.Timestamp = t
+		}
+		records = append(records, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during audit rows scan: %w", err)
+	}
+
+	return audit.VerifyChain(records), nil
 }

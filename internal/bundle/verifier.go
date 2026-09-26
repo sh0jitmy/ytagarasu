@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 )
@@ -101,6 +102,13 @@ func VerifyBundle(bundlePath string, expectedPubKey ed25519.PublicKey) (*Verific
 		res.Errors = append(res.Errors, fmt.Sprintf("invalid manifest.yaml: %v", err))
 	} else {
 		res.Manifest = m
+		if m.ExpiresAt != nil && !m.ExpiresAt.IsZero() && time.Now().UTC().After(m.ExpiresAt.UTC()) {
+			res.Valid = false
+			res.Errors = append(res.Errors, fmt.Sprintf("bundle expired at %s (current time: %s)",
+				m.ExpiresAt.UTC().Format(time.RFC3339),
+				time.Now().UTC().Format(time.RFC3339),
+			))
+		}
 	}
 
 	// 2. Verify signature

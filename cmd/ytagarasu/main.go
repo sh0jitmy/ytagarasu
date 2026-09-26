@@ -17,14 +17,20 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
-
 	"path/filepath"
+	"strings"
 
+	"github.com/sh0jitmy/ytagarasu/internal/audit"
 	"github.com/sh0jitmy/ytagarasu/internal/bundle"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/sh0jitmy/ytagarasu/internal/pkgengine"
+	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 	"github.com/sh0jitmy/ytagarasu/internal/version"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
@@ -180,6 +186,65 @@ func main() {
 							},
 						},
 						Action: runBundleKeygen,
+					},
+				},
+			},
+			{
+				Name:  "keygen",
+				Usage: "Generate a new Ed25519 keypair for bundle signing and verification",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "dir",
+						Aliases: []string{"d"},
+						Value:   ".",
+						Usage:   "Directory to save private.key and public.key",
+					},
+				},
+				Action: runBundleKeygen,
+			},
+			{
+				Name:  "audit",
+				Usage: "Inspect and verify tamper-proof audit trail hash chain",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "verify",
+						Usage: "Verify cryptographic integrity of the audit hash chain",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "server",
+								Aliases: []string{"s"},
+								Value:   "http://127.0.0.1:8080",
+								Usage:   "Artifact server URL to query",
+							},
+							&cli.StringFlag{
+								Name:  "db",
+								Usage: "Path to local SQLite release DB file (bypasses HTTP server if provided)",
+							},
+						},
+						Action: runAuditVerify,
+					},
+					{
+						Name:  "list",
+						Usage: "List recorded audit log events",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "server",
+								Aliases: []string{"s"},
+								Value:   "http://127.0.0.1:8080",
+								Usage:   "Artifact server URL to query",
+							},
+							&cli.StringFlag{
+								Name:  "db",
+								Usage: "Path to local SQLite release DB file",
+							},
+							&cli.IntFlag{
+								Name:    "limit",
+								Aliases: []string{"n"},
+								Value:   20,
+								Usage:   "Maximum number of audit events to display",
+							},
+						},
+						Action: runAuditList,
 					},
 				},
 			},
@@ -468,4 +533,131 @@ func runBundleKeygen(c *cli.Context) error {
 	fmt.Printf("  Private Key: %s (permissions: 0600)\n", privPath)
 	fmt.Printf("  Public Key:  %s\n", pubPath)
 	return nil
+}
+
+func runAuditVerify(c *cli.Context) error {
+	dbPath := c.String("db")
+	if dbPath != "" {
+		cleanDB := filepath.Clean(dbPath)
+		db, err := store.NewDB(fmt.Sprintf("file:%s", cleanDB))
+		if err != nil {
+			return fmt.Errorf("failed opening database: %w", err)
+		}
+		defer func() { _ = db.Close() }()
+
+		report, err := db.VerifyAuditTrail(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed verifying audit trail: %w", err)
+		}
+		printAuditReport(report)
+		if !report.Valid {
+			return errors.New("audit trail verification failed")
+		}
+		return nil
+	}
+
+	serverURL := strings.TrimRight(c.String("server"), "/")
+	verifyURL := serverURL + "/api/v1/audit/verify"
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, verifyURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed creating verify request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // user CLI command targeting configured server
+	if err != nil {
+		return fmt.Errorf("failed contacting artifact server: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var report audit.VerificationReport
+	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+		return fmt.Errorf("failed decoding server response: %w", err)
+	}
+
+	printAuditReport(&report)
+	if !report.Valid {
+		return errors.New("audit trail verification failed")
+	}
+	return nil
+}
+
+func printAuditReport(report *audit.VerificationReport) {
+	if report.Valid {
+		fmt.Printf("✅ Audit trail is VALID and tamper-free!\n")
+		fmt.Printf("  • Total records:    %d\n", report.TotalRecords)
+		if report.TotalRecords > 0 {
+			fmt.Printf("  • Last sequence:    %d\n", report.LastSequence)
+			fmt.Printf("  • Last record hash: %s\n", report.LastRecordHash)
+		}
+	} else {
+		fmt.Printf("❌ Audit trail verification FAILED (%d error(s)):\n", len(report.Errors))
+		for _, e := range report.Errors {
+			fmt.Printf("  • %s\n", e)
+		}
+	}
+}
+
+func runAuditList(c *cli.Context) error {
+	limit := c.Int("limit")
+	dbPath := c.String("db")
+	if dbPath != "" {
+		cleanDB := filepath.Clean(dbPath)
+		db, err := store.NewDB(fmt.Sprintf("file:%s", cleanDB))
+		if err != nil {
+			return fmt.Errorf("failed opening database: %w", err)
+		}
+		defer func() { _ = db.Close() }()
+
+		records, err := db.ListAuditLogs(context.Background(), limit, 0)
+		if err != nil {
+			return fmt.Errorf("failed listing audit records: %w", err)
+		}
+		printAuditRecords(records)
+		return nil
+	}
+
+	serverURL := strings.TrimRight(c.String("server"), "/")
+	listURL := fmt.Sprintf("%s/api/v1/audit/records?limit=%d", serverURL, limit)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, listURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed creating list request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // user CLI command targeting configured server
+	if err != nil {
+		return fmt.Errorf("failed contacting artifact server: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var records []audit.Record
+	if err := json.NewDecoder(resp.Body).Decode(&records); err != nil {
+		return fmt.Errorf("failed decoding server response: %w", err)
+	}
+
+	printAuditRecords(records)
+	return nil
+}
+
+func printAuditRecords(records []audit.Record) {
+	if len(records) == 0 {
+		fmt.Println("No audit records found.")
+		return
+	}
+
+	fmt.Printf("%-6s | %-20s | %-20s | %-16s | %-12s | %s\n", "SEQ", "TIMESTAMP", "EVENT TYPE", "ENTITY", "ACTOR", "HASH (PREFIX)")
+	fmt.Println("-------+----------------------+----------------------+------------------+--------------+--------------")
+	for _, r := range records {
+		hashPrefix := r.RecordHash
+		if len(hashPrefix) > 12 {
+			hashPrefix = hashPrefix[:12]
+		}
+		fmt.Printf("%-6d | %-20s | %-20s | %-16s | %-12s | %s\n",
+			r.Sequence,
+			r.Timestamp.Format("2006-01-02 15:04:05"),
+			r.EventType,
+			r.EntityID,
+			r.Actor,
+			hashPrefix,
+		)
+	}
 }

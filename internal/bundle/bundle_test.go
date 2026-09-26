@@ -182,3 +182,59 @@ func TestCrypto_SaveAndLoadKeys(t *testing.T) {
 	assert.True(t, bundle.VerifySignature(loadedPub, data, sig))
 	assert.False(t, bundle.VerifySignature(loadedPub, []byte("tampered-data"), sig))
 }
+
+func TestVerifyBundle_ExpiredBundle(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	expiredManifestYAML := `
+version: "1.0"
+bundleVersion: "2026.09.27.1"
+release: "1.0.0"
+createdAt: "2020-01-01T00:00:00Z"
+expiresAt: "2020-01-02T00:00:00Z"
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+applications:
+  - name: "test-app"
+    type: "golang"
+    selector:
+      roles: ["api"]
+    artifact: "artifacts/golang/test-app"
+    destination: "/usr/local/bin/test-app"
+    permissions: "0755"
+`
+	manifestPath := filepath.Join(dir, "manifest.yaml")
+	require.NoError(t, os.WriteFile(manifestPath, []byte(expiredManifestYAML), 0600))
+
+	binDir := filepath.Join(dir, "artifacts", "golang")
+	require.NoError(t, os.MkdirAll(binDir, 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, "test-app"), []byte("binary-payload"), 0750)) //nolint:gosec
+
+	outTarGz := filepath.Join(t.TempDir(), "expired-bundle.tar.gz")
+	reportFile := filepath.Join(t.TempDir(), "prep-expired.yaml")
+
+	pubKey, privKey, err := bundle.GenerateKeyPair()
+	require.NoError(t, err)
+
+	opts := bundle.BuildOptions{
+		ManifestPath:     manifestPath,
+		SourceDir:        dir,
+		OutputFile:       outTarGz,
+		ReportOutputFile: reportFile,
+		PrivateKey:       privKey,
+		TargetPlatform:   manifest.Target{OS: "ubuntu", Release: "24.04", Arch: "amd64"},
+	}
+
+	_, err = bundle.BuildBundle(opts)
+	require.NoError(t, err)
+
+	vRes, err := bundle.VerifyBundle(outTarGz, pubKey)
+	require.NoError(t, err)
+	require.NotNil(t, vRes)
+	assert.False(t, vRes.Valid)
+	assert.NotEmpty(t, vRes.Errors)
+	assert.Contains(t, vRes.Errors[0], "bundle expired at")
+}
