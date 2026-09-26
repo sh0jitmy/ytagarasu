@@ -40,6 +40,7 @@ type VerificationResult struct {
 	SignatureValid bool               `json:"signatureValid"`
 	ChecksumsValid bool               `json:"checksumsValid"`
 	FileCount      int                `json:"fileCount"`
+	Files          map[string][]byte  `json:"-"`
 	Errors         []string           `json:"errors,omitempty"`
 }
 
@@ -82,6 +83,7 @@ func VerifyBundle(bundlePath string, expectedPubKey ed25519.PublicKey) (*Verific
 	res := &VerificationResult{
 		Valid:     true,
 		FileCount: len(files),
+		Files:     files,
 		Errors:    make([]string, 0),
 	}
 
