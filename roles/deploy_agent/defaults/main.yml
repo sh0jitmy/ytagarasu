@@ -1,0 +1,32 @@
+---
+# Default variables for roles/deploy_agent
+deploy_agent_user: "deploy-agent"
+deploy_agent_group: "deploy-agent"
+deploy_agent_system_user: true
+
+# Binary deployment settings
+deploy_agent_binary_src: "bin/ytagarasu-agent"
+deploy_agent_binary_dest: "/usr/local/bin/ytagarasu-agent"
+
+# Paths and directories
+deploy_agent_config_dir: "/etc/ytagarasu"
+deploy_agent_state_dir: "/var/lib/ytagarasu-agent"
+deploy_agent_log_dir: "/var/log/ytagarasu-agent"
+deploy_agent_install_dir: "/"
+
+# Agent configuration settings
+deploy_agent_server_url: "http://127.0.0.1:8080"
+deploy_agent_service_id: "default"
+deploy_agent_poll_interval: "10s"
+deploy_agent_roles:
+  - "api"
+  - "web"
+
+# Cryptographic and Trust Anchor keys (optional)
+deploy_agent_release_signer_key: ""
+deploy_agent_ca_cert: ""
+
+# Systemd service settings
+deploy_agent_service_name: "ytagarasu-agent"
+deploy_agent_enable_service: true
+deploy_agent_state: "started"

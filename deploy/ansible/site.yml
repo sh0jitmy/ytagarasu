@@ -1,0 +1,8 @@
+---
+# Ytagarasu Agent Initial Bootstrap Playbook
+# Run once via: ansible-playbook -i hosts site.yml
+- name: Bootstrap Ytagarasu Autonomous Deployment Agent
+  hosts: all
+  become: true
+  roles:
+    - role: deploy_agent

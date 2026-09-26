@@ -30,10 +30,21 @@ import (
 
 	"github.com/sh0jitmy/ytagarasu/internal/agent"
 	"github.com/sh0jitmy/ytagarasu/internal/version"
+	"gopkg.in/yaml.v3"
 )
+
+type agentConfigFile struct {
+	ServerURL  string   `yaml:"server"`
+	ServiceID  string   `yaml:"service"`
+	Interval   string   `yaml:"interval"`
+	StateDir   string   `yaml:"state_dir"`
+	InstallDir string   `yaml:"install_dir"`
+	Roles      []string `yaml:"roles"`
+}
 
 func main() {
 	var (
+		configPath   string
 		serverURL    string
 		serviceID    string
 		pollInterval time.Duration
@@ -43,14 +54,16 @@ func main() {
 		showVersion  bool
 	)
 
-	flag.StringVar(&serverURL, "server", "http://127.0.0.1:8080", "ytagarasu-server base URL")
-	flag.StringVar(&serverURL, "s", "http://127.0.0.1:8080", "ytagarasu-server base URL (short)")
-	flag.StringVar(&serviceID, "service", "default", "Assigned service identifier to deploy")
-	flag.DurationVar(&pollInterval, "interval", 10*time.Second, "Polling interval duration")
-	flag.DurationVar(&pollInterval, "i", 10*time.Second, "Polling interval duration (short)")
-	flag.StringVar(&stateDir, "state-dir", "./data/ytagarasu-agent", "Directory to store agent state and lock file")
-	flag.StringVar(&stateDir, "d", "./data/ytagarasu-agent", "Directory to store agent state (short)")
-	flag.StringVar(&installDir, "install-dir", "/", "Root directory to install application binaries")
+	flag.StringVar(&configPath, "config", "", "Path to agent.yaml configuration file")
+	flag.StringVar(&configPath, "c", "", "Path to agent.yaml configuration file (short)")
+	flag.StringVar(&serverURL, "server", "", "ytagarasu-server base URL")
+	flag.StringVar(&serverURL, "s", "", "ytagarasu-server base URL (short)")
+	flag.StringVar(&serviceID, "service", "", "Assigned service identifier to deploy")
+	flag.DurationVar(&pollInterval, "interval", 0, "Polling interval duration")
+	flag.DurationVar(&pollInterval, "i", 0, "Polling interval duration (short)")
+	flag.StringVar(&stateDir, "state-dir", "", "Directory to store agent state and lock file")
+	flag.StringVar(&stateDir, "d", "", "Directory to store agent state (short)")
+	flag.StringVar(&installDir, "install-dir", "", "Root directory to install application binaries")
 	flag.StringVar(&rolesStr, "roles", "", "Comma-separated list of host roles (e.g. api,worker)")
 	flag.BoolVar(&showVersion, "version", false, "Print version information and exit")
 	flag.BoolVar(&showVersion, "v", false, "Print version information and exit (short)")
@@ -59,6 +72,63 @@ func main() {
 	if showVersion {
 		fmt.Printf("ytagarasu-agent %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date)
 		return
+	}
+
+	// 1. Check config file: explicit flag or standard path
+	if configPath == "" {
+		if _, err := os.Stat("/etc/ytagarasu/agent.yaml"); err == nil {
+			configPath = "/etc/ytagarasu/agent.yaml"
+		} else if _, err := os.Stat("/etc/deploy-agent/agent.yaml"); err == nil {
+			configPath = "/etc/deploy-agent/agent.yaml"
+		}
+	}
+
+	var parsedRoles []string
+	if configPath != "" {
+		cleanConfig := filepath.Clean(configPath)
+		data, err := os.ReadFile(cleanConfig) //nolint:gosec // Config file path provided by user or default path
+		if err == nil {
+			var cf agentConfigFile
+			if err := yaml.Unmarshal(data, &cf); err == nil {
+				if serverURL == "" && cf.ServerURL != "" {
+					serverURL = cf.ServerURL
+				}
+				if serviceID == "" && cf.ServiceID != "" {
+					serviceID = cf.ServiceID
+				}
+				if pollInterval == 0 && cf.Interval != "" {
+					if d, parseErr := time.ParseDuration(cf.Interval); parseErr == nil {
+						pollInterval = d
+					}
+				}
+				if stateDir == "" && cf.StateDir != "" {
+					stateDir = cf.StateDir
+				}
+				if installDir == "" && cf.InstallDir != "" {
+					installDir = cf.InstallDir
+				}
+				if len(cf.Roles) > 0 {
+					parsedRoles = append(parsedRoles, cf.Roles...)
+				}
+			}
+		}
+	}
+
+	// 2. Set defaults if still empty
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:8080"
+	}
+	if serviceID == "" {
+		serviceID = "default"
+	}
+	if pollInterval == 0 {
+		pollInterval = 10 * time.Second
+	}
+	if stateDir == "" {
+		stateDir = "./data/ytagarasu-agent"
+	}
+	if installDir == "" {
+		installDir = "/"
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -79,7 +149,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var roles []string
+	roles := parsedRoles
 	if rolesStr != "" {
 		for _, r := range strings.Split(rolesStr, ",") {
 			trimmed := strings.TrimSpace(r)
