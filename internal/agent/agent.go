@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sh0jitmy/ytagarasu/internal/configmgr"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 )
 
@@ -200,7 +201,14 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 		}
 	}
 
-	// 4. Download and apply application artifacts
+	// 4. Initialize Atomic Configuration & Artifact Transaction
+	backupDir := filepath.Join(filepath.Dir(a.cfg.StateFile), "backups", releaseID)
+	tx, err := configmgr.NewTransaction(backupDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed initializing rollback transaction: %w", err)
+	}
+
+	// Stage application binaries
 	for _, app := range m.Applications {
 		if !app.Selector.Matches(a.cfg.Roles, a.cfg.Hostname) {
 			continue
@@ -211,16 +219,144 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 
 		slog.Info("downloading application artifact", "app", app.Name, "artifact", app.Artifact)
 		artifactURL := fmt.Sprintf("%s/repos/%s/%s", strings.TrimRight(a.cfg.ServerURL, "/"), a.cfg.ServiceID, app.Artifact)
-		if downloadErr := a.downloadArtifact(ctx, artifactURL, app); downloadErr != nil {
+		binData, downloadErr := a.fetchRemoteBytes(ctx, artifactURL)
+		if downloadErr != nil {
+			_ = tx.Rollback()
 			report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("artifact download failed: %v", downloadErr), startTime)
 			a.sendReport(ctx, report)
 			state.Status = "failed"
 			_ = a.stateStore.Save(state)
 			return report, downloadErr
 		}
+
+		destPath := app.Destination
+		if destPath == "" {
+			destPath = filepath.Join(a.cfg.InstallDir, "bin", app.Name)
+		} else if !filepath.IsAbs(destPath) {
+			destPath = filepath.Join(a.cfg.InstallDir, destPath)
+		}
+
+		mode := os.FileMode(0750)
+		if app.Permissions != "" {
+			if parsed, parseErr := strconv.ParseUint(app.Permissions, 8, 32); parseErr == nil {
+				mode = os.FileMode(parsed)
+			}
+		}
+
+		if stageErr := tx.StageFile(ctx, destPath, binData, mode, ""); stageErr != nil {
+			_ = tx.Rollback()
+			report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("staging binary failed: %v", stageErr), startTime)
+			a.sendReport(ctx, report)
+			state.Status = "failed"
+			_ = a.stateStore.Save(state)
+			return report, stageErr
+		}
 	}
 
-	// 5. Update State
+	// Stage configuration templates
+	for _, cfg := range m.Configs {
+		if !cfg.Selector.Matches(a.cfg.Roles, a.cfg.Hostname) {
+			continue
+		}
+		if cfg.Template == "" {
+			continue
+		}
+
+		tmplURL := fmt.Sprintf("%s/repos/%s/%s", strings.TrimRight(a.cfg.ServerURL, "/"), a.cfg.ServiceID, cfg.Template)
+		tmplBytes, fetchErr := a.fetchRemoteBytes(ctx, tmplURL)
+		if fetchErr != nil {
+			_ = tx.Rollback()
+			report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("config template fetch failed: %v", fetchErr), startTime)
+			a.sendReport(ctx, report)
+			state.Status = "failed"
+			_ = a.stateStore.Save(state)
+			return report, fetchErr
+		}
+
+		renderer, rendErr := configmgr.NewRenderer(filepath.Base(cfg.Template), string(tmplBytes))
+		if rendErr != nil {
+			_ = tx.Rollback()
+			report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("template compile failed: %v", rendErr), startTime)
+			a.sendReport(ctx, report)
+			state.Status = "failed"
+			_ = a.stateStore.Save(state)
+			return report, rendErr
+		}
+
+		templateContext := map[string]any{
+			"Hostname":  a.cfg.Hostname,
+			"ServiceID": a.cfg.ServiceID,
+			"Release":   m.Release,
+			"Roles":     a.cfg.Roles,
+		}
+
+		rendered, execErr := renderer.Render(templateContext)
+		if execErr != nil {
+			_ = tx.Rollback()
+			report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("template render failed: %v", execErr), startTime)
+			a.sendReport(ctx, report)
+			state.Status = "failed"
+			_ = a.stateStore.Save(state)
+			return report, execErr
+		}
+
+		destPath := cfg.Destination
+		if !filepath.IsAbs(destPath) {
+			destPath = filepath.Join(a.cfg.InstallDir, destPath)
+		}
+
+		mode := os.FileMode(0640)
+		if cfg.Permissions != "" {
+			if parsed, parseErr := strconv.ParseUint(cfg.Permissions, 8, 32); parseErr == nil {
+				mode = os.FileMode(parsed)
+			}
+		}
+
+		// Stage with validation command
+		if stageErr := tx.StageFile(ctx, destPath, rendered, mode, cfg.ValidateCommand); stageErr != nil {
+			_ = tx.Rollback()
+			report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("config validation rejected: %v", stageErr), startTime)
+			a.sendReport(ctx, report)
+			state.Status = "failed"
+			_ = a.stateStore.Save(state)
+			return report, stageErr
+		}
+	}
+
+	// 5. Commit Transaction via Atomic Rename (renameat)
+	if commitErr := tx.Commit(); commitErr != nil {
+		_ = tx.Rollback()
+		report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("atomic commit failed: %v", commitErr), startTime)
+		a.sendReport(ctx, report)
+		state.Status = "failed"
+		_ = a.stateStore.Save(state)
+		return report, commitErr
+	}
+
+	// 6. Execute Health Checks & Automatic Rollback on Failure
+	if len(m.HealthChecks) > 0 {
+		checker := configmgr.NewHealthChecker(a.client)
+		for _, hc := range m.HealthChecks {
+			if !hc.Selector.Matches(a.cfg.Roles, a.cfg.Hostname) {
+				continue
+			}
+
+			slog.Info("executing health check probe", "type", hc.Type, "target", hc.Endpoint+hc.Command)
+			if checkErr := checker.Check(ctx, hc); checkErr != nil {
+				slog.Error("health check probe failed, triggering automatic rollback", "error", checkErr)
+				if rbErr := tx.Rollback(); rbErr != nil {
+					slog.Error("error during rollback execution", "rollback_error", rbErr)
+				}
+				report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("health check failed (rolled back): %v", checkErr), startTime)
+				a.sendReport(ctx, report)
+				state.Status = "failed"
+				_ = a.stateStore.Save(state)
+				return report, checkErr
+			}
+		}
+	}
+
+	// 7. Update State on Success
 	state.ServiceID = a.cfg.ServiceID
 	state.CurrentReleaseID = releaseID
 	state.CurrentVersion = m.Release
@@ -231,11 +367,11 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 		slog.Error("failed saving agent state", "error", err)
 	}
 
-	// 6. Submit Success Report
+	// 8. Submit Success Report
 	report := a.createReport(releaseID, m.Release, true, "", startTime)
 	a.sendReport(ctx, report)
 
-	slog.Info("autonomous deployment succeeded",
+	slog.Info("autonomous deployment succeeded and committed",
 		"service", a.cfg.ServiceID,
 		"release", releaseID,
 		"duration_ms", report.DurationMs,
@@ -244,61 +380,23 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 	return report, nil
 }
 
-func (a *Agent) downloadArtifact(ctx context.Context, artifactURL string, app manifest.Application) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, artifactURL, nil)
+func (a *Agent) fetchRemoteBytes(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("artifact server returned HTTP %s for %s", resp.Status, artifactURL)
+		return nil, fmt.Errorf("remote server returned HTTP %s for %s", resp.Status, url)
 	}
 
-	destPath := app.Destination
-	if destPath == "" {
-		destPath = filepath.Join(a.cfg.InstallDir, "bin", app.Name)
-	} else if !filepath.IsAbs(destPath) {
-		destPath = filepath.Join(a.cfg.InstallDir, destPath)
-	}
-	cleanDest := filepath.Clean(destPath)
-
-	if dirErr := os.MkdirAll(filepath.Dir(cleanDest), 0750); dirErr != nil {
-		return fmt.Errorf("failed creating artifact destination directory: %w", dirErr)
-	}
-
-	mode := os.FileMode(0750)
-	if app.Permissions != "" {
-		if parsed, parseErr := strconv.ParseUint(app.Permissions, 8, 32); parseErr == nil {
-			mode = os.FileMode(parsed)
-		}
-	}
-
-	tmpFile, err := os.CreateTemp(filepath.Dir(cleanDest), "download-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Chmod(mode); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpName, cleanDest)
+	return io.ReadAll(resp.Body)
 }
 
 func (a *Agent) createReport(releaseID, version string, success bool, errMsg string, startTime time.Time) *DeployReport {
