@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent"
-	"github.com/shjtmy/go_sh0jitmy_template/ent/user"
+	"github.com/sh0jitmy/ytagarasu/ent"
+	"github.com/sh0jitmy/ytagarasu/ent/user"
 	"golang.org/x/crypto/bcrypt"
 )
 

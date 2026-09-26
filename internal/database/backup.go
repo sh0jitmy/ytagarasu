@@ -33,8 +33,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent"
-	"github.com/shjtmy/go_sh0jitmy_template/ent/user"
+	"github.com/sh0jitmy/ytagarasu/ent"
+	"github.com/sh0jitmy/ytagarasu/ent/user"
 )
 
 // BackupManifest contains metadata about the database backup archive.

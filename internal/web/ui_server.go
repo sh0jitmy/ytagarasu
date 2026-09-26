@@ -26,9 +26,9 @@ import (
 	"runtime"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shjtmy/go_sh0jitmy_template/ent"
-	"github.com/shjtmy/go_sh0jitmy_template/ent/user"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/database"
+	"github.com/sh0jitmy/ytagarasu/ent"
+	"github.com/sh0jitmy/ytagarasu/ent/user"
+	"github.com/sh0jitmy/ytagarasu/internal/database"
 )
 
 //go:embed templates/* static/*

@@ -22,10 +22,10 @@ import (
 
 	"path/filepath"
 
-	"github.com/shjtmy/go_sh0jitmy_template/internal/bundle"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/manifest"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/pkgengine"
-	"github.com/shjtmy/go_sh0jitmy_template/internal/version"
+	"github.com/sh0jitmy/ytagarasu/internal/bundle"
+	"github.com/sh0jitmy/ytagarasu/internal/manifest"
+	"github.com/sh0jitmy/ytagarasu/internal/pkgengine"
+	"github.com/sh0jitmy/ytagarasu/internal/version"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
 )

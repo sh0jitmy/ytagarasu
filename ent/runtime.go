@@ -3,8 +3,8 @@
 package ent
 
 import (
-	"github.com/shjtmy/go_sh0jitmy_template/ent/schema"
-	"github.com/shjtmy/go_sh0jitmy_template/ent/user"
+	"github.com/sh0jitmy/ytagarasu/ent/schema"
+	"github.com/sh0jitmy/ytagarasu/ent/user"
 )
 
 // The init function reads all schema descriptors with runtime code

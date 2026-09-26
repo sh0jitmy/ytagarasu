@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	meter = otel.Meter("github.com/shjtmy/go_sh0jitmy_template/internal/web")
+	meter = otel.Meter("github.com/sh0jitmy/ytagarasu/internal/web")
 
 	// HTTP リクエスト総数カウンター
 	// PromQL: sum(rate(http_requests_total[5m])) by (method, status, path)

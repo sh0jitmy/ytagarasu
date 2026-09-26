@@ -15,9 +15,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/shjtmy/go_sh0jitmy_template/internal/version.Version={{.Version}}
-      - -X github.com/shjtmy/go_sh0jitmy_template/internal/version.Commit={{.Commit}}
-      - -X github.com/shjtmy/go_sh0jitmy_template/internal/version.Date={{.Date}}
+      - -X github.com/sh0jitmy/ytagarasu/internal/version.Version={{.Version}}
+      - -X github.com/sh0jitmy/ytagarasu/internal/version.Commit={{.Commit}}
+      - -X github.com/sh0jitmy/ytagarasu/internal/version.Date={{.Date}}
     goos:
       - linux
       - darwin
@@ -35,9 +35,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/shjtmy/go_sh0jitmy_template/internal/version.Version={{.Version}}
-      - -X github.com/shjtmy/go_sh0jitmy_template/internal/version.Commit={{.Commit}}
-      - -X github.com/shjtmy/go_sh0jitmy_template/internal/version.Date={{.Date}}
+      - -X github.com/sh0jitmy/ytagarasu/internal/version.Version={{.Version}}
+      - -X github.com/sh0jitmy/ytagarasu/internal/version.Commit={{.Commit}}
+      - -X github.com/sh0jitmy/ytagarasu/internal/version.Date={{.Date}}
     goos:
       - linux
       - darwin

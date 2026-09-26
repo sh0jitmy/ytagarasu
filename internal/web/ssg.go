@@ -24,7 +24,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent"
+	"github.com/sh0jitmy/ytagarasu/ent"
 )
 
 // ExportStaticSite renders dashboard pages to static HTML and copies static assets to outDir.

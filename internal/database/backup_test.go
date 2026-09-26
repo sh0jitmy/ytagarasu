@@ -26,7 +26,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/shjtmy/go_sh0jitmy_template/ent/user"
+	"github.com/sh0jitmy/ytagarasu/ent/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
