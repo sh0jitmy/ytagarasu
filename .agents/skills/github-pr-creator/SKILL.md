@@ -47,21 +47,24 @@ allowed-tools: Read Edit Write Glob Grep Bash(git:*,gh:*) Agent AskUserQuestion
 ### Step 3: 英語PRタイトル & 日本語PRボディの自動生成
 - **PRタイトル（Title）**:
   - グローバルな開発整合性と検索性を高めるため、PR タイトルは必ず**英語（English）**（Conventional Commits 形式：`feat: ...`, `fix: ...`, `chore: ...`, `docs: ...` 等）で作成します。日本語でのタイトル設定は行いません。
-- **PR本文（Body）**:
+- **PR本文（Body）の厳格なテンプレート遵守規則（絶対ルール）**:
   - リポジトリの [.github/pull_request_template.md](file://.github/pull_request_template.md) を読み込みます。
-  - テンプレートの書式に沿って、分析した変更履歴に基づき**日本語**でドキュメントを構成します。
-  - **📝 概要 / Summary**:
-    - なぜこの変更を行ったのか（Why）、何が変わったのか（What）の要約。
-  - **📦 変更カテゴリ / Change Category**:
-    - 変更されたファイルパスに基づいて、該当するチェックボックスの `[ ]` を `[x]` に置き換えます。
-      - `internal/web` -> `API / HTTP (internal/web)`
-      - `internal/database` -> `データベース (ent スキーマ / Atlas マイグレーション)`
-      - `.claude/skills` -> `AI スキル (.claude/skills)`
-      - など。
-  - **🛠️ 変更内容 / Changes**:
-    - ファイルごと、あるいは機能ブロックごとに変更内容を具体的な箇条書きで記述します。
-  - **🧪 検証チェックリスト / Verification Checklist**:
-    - `make lint` や `make test` が正常に通過している場合（あるいはAI自身がタスクで実行した実績がある場合）、該当する検証項目の `[ ]` を `[x]` に書き換えます。
+  - **テンプレートの見出し、セクション名、構成を 100% 厳密に維持しなければなりません。独自のフォーマットへの改変やセクションの省略・順序入替は固く禁止します。**
+  - **各セクションの入力要件**:
+    1. **`## 📝 概要 / Summary`**:
+       - なぜこの変更を行ったのか（Why）、何が変わったのか（What）の要約を日本語で記述します。
+    2. **`## 🔗 関連する Issue / Related Issues` (最重要)**:
+       - **対応する Issue が存在する場合は、必ず `Closes #<Issue番号>`、`Fixes #<Issue番号>`、または `Resolves #<Issue番号>` を記載してください。**（本文中に単に "Issue #xx" と書くだけでは GitHub 上で自動クローズされず、Issue が放置される原因となるため、キーワードを用いた正確なリンクを義務付けます）。
+       - 複数ある場合は `- Closes #12`、`- Closes #13` と改行して列挙します。
+       - 該当 Issue がない場合のみ `- 該当なし` と記載します。
+    3. **`## 📦 変更カテゴリ / Change Category`**:
+       - テンプレートの選択肢をすべて残し、変更ファイルに応じて該当する項目の `[ ]` を `[x]` に書き換えます。
+    4. **`## 🛠️ 変更内容 / Changes`**:
+       - ファイルごと、あるいは機能ブロックごとに変更内容を具体的な箇条書きで記述します。
+    5. **`## 🧪 検証チェックリスト / Verification Checklist`**:
+       - テンプレートのチェックリスト項目をすべて維持し、実際に検証済みの項目に `[x]` を付与します。
+    6. **`## 🚨 注意事項・懸念点 / Notes & Concerns`**:
+       - 破壊的変更、互換性の懸念、パフォーマンスへの影響などを記述します。特になければ `- なし` と明記します。
 
 ### Step 4: PRの作成実行
 - 生成したPRボディテキストを一時ファイル（例: `/Users/shjtmy/.gemini/antigravity-ide/brain/<conversation-id>/scratch/pr_body.md`）に書き込みます。

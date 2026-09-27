@@ -209,9 +209,21 @@ def main():
     th, td {{ padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; text-align: left; }}
     th {{ background: #1e293b; color: #94a3b8; font-size: 0.8rem; text-transform: uppercase; }}
     img {{ max-width: 100%; border-radius: 8px; border: 1px solid #334155; margin-top: 1rem; }}
-  </style>
 </head>
 <body>
+  <div style="background: #1e293b; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; justify-content: space-between; border: 1px solid #334155; flex-wrap: wrap;">
+    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+      <a href="index.html" style="color: #38bdf8; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🏠</span> 総合ポータル</a>
+      <span style="color: #64748b;">|</span>
+      <span style="color: #f8fafc; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🔍</span> ytagarasu & マニフェスト作成支援</span>
+      <span style="color: #64748b;">|</span>
+      <a href="matrix_test_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>📦</span> パッケージマトリクス詳細</a>
+      <span style="color: #64748b;">|</span>
+      <a href="frontend_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🖥️</span> スタンドアロン Frontend</a>
+    </div>
+    <span style="font-size: 0.8rem; color: #64748b;">ytagarasu Air-gapped Verification</span>
+  </div>
+
   <h1>🦅 ytagarasu UI E2E Visual Verification Report</h1>
   <div class="card">
     <h2>Execution Summary: <span class="{'badge-pass' if all_pass else 'badge-fail'}">{'ALL TESTS PASSED' if all_pass else 'TESTS FAILED'}</span></h2>

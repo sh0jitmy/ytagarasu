@@ -215,9 +215,21 @@ def generate_report():
         a {{ color: #38bdf8; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
     </style>
-</head>
 <body>
     <div class="container">
+        <div style="background: #1e293b; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; justify-content: space-between; border: 1px solid #334155; flex-wrap: wrap;">
+            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                <a href="index.html" style="color: #38bdf8; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🏠</span> 総合ポータル</a>
+                <span style="color: #64748b;">|</span>
+                <a href="ytagarasu_ui_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🔍</span> ytagarasu & マニフェスト作成支援</a>
+                <span style="color: #64748b;">|</span>
+                <span style="color: #f8fafc; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>📦</span> パッケージマトリクス詳細</span>
+                <span style="color: #64748b;">|</span>
+                <a href="frontend_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🖥️</span> スタンドアロン Frontend</a>
+            </div>
+            <span style="font-size: 0.8rem; color: #64748b;">ytagarasu Package Matrix</span>
+        </div>
+
         <div class="header">
             <div>
                 <h1>📦 ytagarasu Full Package Matrix & Dewy Verification Report</h1>

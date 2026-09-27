@@ -256,9 +256,7 @@ echo -e "${GREEN}✓ Manifest Discovery Survey action verified.${NC}"
 if command -v python3 > /dev/null 2>&1; then
     echo -e "\n${YELLOW}Running visual UI verification and screenshot capture...${NC}"
     SERVER_URL="http://127.0.0.1:${SERVER_PORT}" python3 scripts/test_ytagarasu_ui.py
-    if [ -f "test_reports/ytagarasu_ui_e2e_report.html" ] && [ ! -f "test_reports/index.html" ]; then
-        cp "test_reports/ytagarasu_ui_e2e_report.html" "test_reports/index.html"
-    fi
+    python3 scripts/generate_e2e_portal.py || true
 fi
 
 echo -e "\n${GREEN}================================================================${NC}"

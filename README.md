@@ -66,21 +66,27 @@
    - Go `text/template` による環境変数・ポート等の動的展開。
    - 反映前の構文検証 (`validateCommand`)、一時ファイル書き出し後の `renameat` アトミックリプレイス。
    - ヘルスチェック失敗時の即座スナップショット復元（ゼロ人手介入）。
-6. **📊 組み込み HTMX ダッシュボード & サービスインスペクト (Node.js/npm 完全不要)**:
+6. **🔍 既存サーバーからのマニフェスト作成支援 (KISSホワイトリスト・リバースエンジニアリング)**:
+   - 既存サーバーで稼働中の `systemd` サービス、バイナリ、設定ファイルを安全に下見（`survey`）し、不要なものを取捨選択して `manifest.yaml` を確定生成（`generate`）。
+   - **Mode A (実体吸い上げ / `--ingest`)**: バイナリや設定ファイルを自動取得して即座にバンドル化可能。
+   - **Mode B (デフォルト)**: CI/CD リポジトリの配置を促す `# TODO: <url>` ヒントを出力。
+   - **SIRT 安全弁**: 設定ファイル内の機密情報（パスワード・秘密鍵・トークン等）を `<REDACTED_SECRET>` に自動マスキング。
+   - **Web UI 連携**: `/ui/discover` からブラウザ上で下見・選択・ワンクリックダウンロード（`manifest.yaml`）が可能。
+7. **📊 組み込み HTMX ダッシュボード & サービスインスペクト (Node.js/npm 完全不要)**:
    - `//go:embed` によりアセット（HTMX、CSS）を Go 単一バイナリに内包。外部 CDN 接続ゼロ。
    - サービス一覧、Desired State、稼働メトリクス、監査ログ、バンドル手動インポートを Web ブラウザから確認可能。
    - **詳細インスペクトモーダル**: サービスごとのマニフェスト構成、バイナリ権限、`validateCommand`、CAS Blobs 一覧をインプレース展開。
    - **リアルタイム監査検索**: イベント種別やキーワードによる 300ms デバウンスリアルタイムフィルタリング。
-7. **🤖 初期ブートストラップ Ansible Role**:
+8. **🤖 初期ブートストラップ Ansible Role**:
    - `roles/deploy_agent/` により、ベアメタルや仮想マシンへの `ytagarasu-agent` のバイナリ配置、設定展開、systemd ユニット登録を自動化。
 
 ---
 
 ## 📸 スクリーンショット
 
-| HTMX ダッシュボード (`/ui`) | 監査ログ & 改ざん耐性ハッシュチェーン (`/ui/audit`) |
-| :---: | :---: |
-| ![Dashboard](docs/images/ytagarasu_dashboard.png) | ![Audit Log](docs/images/ytagarasu_audit.png) |
+| オフライン配信ダッシュボード (`/ui`) | 監査ログ & 改ざん耐性チェーン (`/ui/audit`) | 🔍 マニフェスト作成支援 (`/ui/discover`) |
+| :---: | :---: | :---: |
+| ![Dashboard](docs/images/ytagarasu_dashboard.png) | ![Audit Log](docs/images/ytagarasu_audit.png) | ![Manifest Discovery](docs/images/ytagarasu_discover.png) |
 
 ---
 
@@ -103,12 +109,24 @@ make build
 ```
 ブラウザで `http://localhost:8080/ui` にアクセスすると、組み込みダッシュボードが表示されます。
 
-### 3. バンドル署名用の鍵ペア生成
+### 3. (任意) 既存サーバーからのマニフェスト自動作成（リバースエンジニアリング）
+Web UI（`http://localhost:8080/ui/discover`）のウィザードを使用するか、CLI で既存サーバーの構成を安全に吸い上げます：
+```bash
+# Step 1: 稼働中サービスの構成を安全に下見 (Read-Only)
+./bin/ytagarasu discover survey -o discovery-plan.yaml
+
+# Step 2: discovery-plan.yaml を確認し、不要な行を削除/コメントアウト (KISSホワイトリスト)
+
+# Step 3: manifest.yaml を確定生成 (実体吸い上げモード: --ingest)
+./bin/ytagarasu discover generate -p discovery-plan.yaml -o manifest.yaml --ingest
+```
+
+### 4. バンドル署名用の鍵ペア生成
 ```bash
 ./bin/ytagarasu keygen -d ./keys
 ```
 
-### 4. サンプルバンドルの作成・署名・エクスポート
+### 5. サンプルバンドルの作成・署名・エクスポート
 ```bash
 ./bin/ytagarasu bundle export \
     --manifest examples/manifest.yaml \
@@ -118,14 +136,14 @@ make build
     --force
 ```
 
-### 5. サーバーへのバンドルインポート
+### 6. サーバーへのバンドルインポート
 Web UI（`http://localhost:8080/ui`）からファイルをドラッグ＆ドロップするか、curl でアップロードします：
 ```bash
 curl -X POST http://localhost:8080/api/v1/bundles/import \
     -F "bundle=@./bundle-v1.0.0.tar.gz"
 ```
 
-### 6. クライアントエージェントによる適用
+### 7. クライアントエージェントによる適用
 ```bash
 ./bin/ytagarasu-agent \
     --server http://localhost:8080 \
@@ -133,7 +151,7 @@ curl -X POST http://localhost:8080/api/v1/bundles/import \
     --once
 ```
 
-### 7. 監査ハッシュチェーンの改ざん検証
+### 8. 監査ハッシュチェーンの改ざん検証
 ```bash
 ./bin/ytagarasu audit verify --server http://localhost:8080
 ```
@@ -149,21 +167,24 @@ curl -X POST http://localhost:8080/api/v1/bundles/import \
 | :--- | :--- | :--- | :--- |
 | **Layer 1** | `make test` | 単体・結合テスト（`-race`、メモリDB分離、カバレッジ 100%） | PR / ローカル開発 |
 | **Layer 2** | `make sqlite-e2e` | No-Docker スタンドアロン SQLite ガバナンス・バックアップ検証 | PR CI / ローカル検証 |
-| **Layer 3** | `make ytagarasu-e2e` | **Agent-Server 実機デプロイ動作 & HTMX UI 一括 E2E 検証** | PR CI / マージ前検証 |
-| **Layer 4** | `make frontend-e2e` | Headless Chrome による自動スナップショット撮影 & HTML レポート | PR CI / 視覚監査 |
-| **Layer 5** | `make matrix-test` | **全パッケージ種別網羅（APT, DNF, Pip, Docker）E2E 検証** | 手動実行 / 週次定期 CI |
+| **Layer 3** | `make ytagarasu-e2e` | **Agent-Server 実機デプロイ動作、マニフェスト作成支援 & HTMX UI 一括 E2E 検証** | PR CI / マージ前検証 |
+| **Layer 4** | `make frontend-e2e` | Headless Chrome による自動スナップショット撮影 & 統合 HTML ポータル生成 | PR CI / 視覚監査 |
+| **Layer 5** | `make matrix-test` | **全パッケージ種別網羅（APT, DNF, Pip, Docker, Dewy）E2E 検証** | 手動実行 / 週次定期 CI |
 
 ```bash
-# Agent-Server 実機動作および HTMX UI の完全な E2E テストを実行
+# Agent-Server 実機動作および HTMX UI（マニフェスト作成支援含む）の完全な E2E テストを実行
 make ytagarasu-e2e
 
-# 全パッケージエコシステム（APT, DNF, Pip, Docker）のマトリクステストを手動実行
+# 全パッケージエコシステム（APT, DNF, Pip, Docker, Dewy）のマトリクステストを手動実行
 make matrix-test
 ```
 
 > **🌐 Live E2E Verification Report & UI Snapshots**:
-> Headless Chrome で自動撮影されたダッシュボード・監査チェーン UI のスナップショットと検証結果は、GitHub Pages にて常時公開されています：
-> 👉 **[https://sh0jitmy.github.io/ytagarasu/](https://sh0jitmy.github.io/ytagarasu/)** (日本語 CJK フォント完全対応)
+> Headless Chrome で自動撮影されたダッシュボード・監査チェーン・マニフェスト作成支援 UI のスナップショットと各種検証結果は、GitHub Pages にて常時公開・相互リンクされています：
+> - 🏠 **総合 E2E ポータル**: [https://sh0jitmy.github.io/ytagarasu/](https://sh0jitmy.github.io/ytagarasu/)
+> - 🔍 **ytagarasu UI & マニフェスト作成支援 E2E レポート**: [https://sh0jitmy.github.io/ytagarasu/ytagarasu_ui_e2e_report.html](https://sh0jitmy.github.io/ytagarasu/ytagarasu_ui_e2e_report.html)
+> - 📦 **全パッケージ網羅マトリクス詳細レポート**: [https://sh0jitmy.github.io/ytagarasu/matrix_test_report.html](https://sh0jitmy.github.io/ytagarasu/matrix_test_report.html)
+> - 🖥️ **スタンドアロン HTMX Frontend E2E レポート**: [https://sh0jitmy.github.io/ytagarasu/frontend_e2e_report.html](https://sh0jitmy.github.io/ytagarasu/frontend_e2e_report.html)
 
 ---
 
