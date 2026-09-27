@@ -1,113 +1,176 @@
-# Go & SRE/DB/Security 開発用 GitHub テンプレートリポジトリ
+# 🦅 ytagarasu (八咫烏)
 
-このリポジトリは、Go (Golang) によるセキュアで高信頼なWebアプリケーション・APIサービス開発を迅速に開始するための、GitHub テンプレートリポジトリです。
-CIでの静的解析、脆弱性診断、自動タグ付け (tagpr)、リリース管理 (GoReleaser v2) のパイプラインがあらかじめ統合されているほか、**Node.js不要のスタンドアロン HTMX フロントエンド**、**改変検知付き SQLite バックアップ＆アトミックリストア**、**多層 E2E テストフレームワーク＆GitHub Pagesレポート**、**Dewy プル型自動デプロイツールキット**、および **Claude Code / Antigravity 両対応の AI カスタムスキル**（30種）を標準同梱しています。
+[![CI](https://github.com/sh0jitmy/ytagarasu/actions/workflows/ci.yml/badge.svg)](https://github.com/sh0jitmy/ytagarasu/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sh0jitmy/ytagarasu)](https://goreportcard.com/report/github.com/sh0jitmy/ytagarasu)
 
----
+**ytagarasu（八咫烏）** は、インターネット接続が完全に遮断された**エアギャップ（完全オフライン）環境**のための、高信頼・自律型デプロイメント基盤プラットフォームです。
 
-## 🚀 主な特徴
-
-1. **スタンドアロン HTMX フロントエンド & SSG (Node.js/npm 完全不要)**:
-   - `//go:embed` により HTML テンプレートとアセット（HTMX、CSS）を Go バイナリに完全内包（Air-gapped 閉域環境対応）。
-   - システムメトリクス（CPU、メモリ、Goroutine数）のリアルタイム自動ポーリング。
-   - `make ssg-build` により、GitHub Pages や監査用アーカイブに向けた静的 HTML事前レンダリング出力（SSG）が可能。
-2. **SQLite エンタープライズ運用・ガバナンス層**:
-   - CGO フリーな SQLite 接続（WAL モード、外部キー制約、ビジータイムアウト自動最適化）。
-   - SHA-256 チェックサム付きマニフェストによる改変検知バックアップアーカイブ（`tar.gz`）の作成とアトミックなトランザクション復元。
-   - データ保持期間超過レコードの自動パージ（Retention Cleaner）。
-3. **多層 E2E テストフレームワーク & GitHub Pages レポート**:
-   - **Layer 1**: 単体＆結合テスト（`make test`、インメモリDB完全分離、カバレッジ 80% 以上）。
-   - **Layer 2**: No-Docker スタンドアロン SQLite E2E（`make sqlite-e2e`、認証・CRUD・バックアップ/リストアを 3 秒で高速検証）。
-   - **Layer 3**: スタンドアロン フロントエンド E2E（`make frontend-e2e`、Headless Chrome スナップショット撮影と HTML レポート自動生成）。
-   - **Layer 4**: Docker フルスタック E2E（`make docker-e2e`、PostgreSQL、VictoriaMetrics、Grafana、API、Web のマルチコンテナ協調動作検証）。
-   - **HTML Dashboard**: `make e2e-report` により機密情報をサニタイズした E2E HTML レポートを生成し、GitHub Pages へ自動公開。
-4. **自動リリース＆Dewy プル型デプロイツールキット**:
-   - `main` ブランチへの PR マージ時にリリース用 PR が自動作成・更新 (tagpr)。
-   - リリース PR マージ時に自動でタグが打たれ、GitHub Releases にクロスコンパイルバイナリ（`app`, `web`）が公開 (GoReleaser v2)。
-   - S3/オブジェクトストレージ経由のゼロダウンタイム切り替えを行う Dewy プル型デプロイ設定テンプレート（`deploy/dewy/`）および SOPS/age シークレット管理を統合。
-   - Go バージョンは `go.mod` を単一の信頼できる情報源 (SSOT) として GitHub Actions と完全同期。
-5. **AI エージェント用カスタムスキル (Claude & Antigravity 両対応)**:
-   - 30種類の専門スキル（`.claude/skills/` および `.agents/skills/`）を同梱。ドキュメント同期ガバナンスおよびゼロ Lint 容認ルールを標準適用。
+金融・医療・エネルギー・制御システム・製造工場などの閉域ネットワークにおいて、再帰的依存解決済みパッケージ、アプリケーション成果物、設定テンプレート、TLS 証明書をひとつの暗号署名付きバンドルにまとめ、物理メディア搬送からサーバー配布、クライアントエージェントによる自動適用・ロールバック・監査トレースまでをエンドツーエンドで完結させます。
 
 ---
 
-## 📸 スクリーンショット & レポート
+## 🏛️ 全体アーキテクチャ
 
-| HTMX スタンドアロンダッシュボード | 自動生成された HTML 検証レポート |
+```
+ [ オンライン・ビルド環境 ]
+        │
+        ├── 1. manifest.yaml 定義 & 事前リスク評価 (ytagarasu manifest init / eval)
+        ├── 2. APT / RPM 依存関係の再帰的解決 & キャッシュ (pkgengine)
+        ├── 3. Ed25519 デジタル署名 & フル/差分バンドル生成 (ytagarasu bundle export)
+        │
+ ═══════╪════════════════════════════════════════════════════════════════════════
+        │  物理メディア搬送 (USB / 外付け暗号化ストレージ)
+ ═══════╪════════════════════════════════════════════════════════════════════════
+        ▼
+ [ オフライン・エアギャップ環境 ]
+        │
+   ┌────┴───────────────────────────────────────────────────────────────────┐
+   │ 4. オフライン成果物サーバー (ytagarasu-server)                          │
+   │    ├── 署名・有効期限の検証パイプライン                                 │
+   │    ├── コンテンツアドレス可能ストレージ (SHA-256 CAS)                  │
+   │    ├── CGO-free WAL SQLite リリース管理 & 仮想リポジトリ (/repos/...)   │
+   │    ├── 改ざん耐性 SHA-256 監査ハッシュチェーン (/api/v1/audit/...)     │
+   │    └── Node.js不要の組み込み HTMX ダッシュボード (/ui)                 │
+   └────┬───────────────────────────────────────────────────────────────────┘
+        │ HTTP (Desired State Polling)
+        ▼
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │ 5. 自律型デプロイエージェント (ytagarasu-agent)                        │
+   │    ├── flock 多重実行ガードによる競合防止                              │
+   │    ├── 非対話的パッケージインストール (DEBIAN_FRONTEND / -y)           │
+   │    ├── Go text/template 設定ファイル動的レンダリング                   │
+   │    ├── validateCommand による反映前構文検証 (nginx -t 等)             │
+   │    ├── renameat 不可分更新 & 失敗時の即座スナップショット復元          │
+   │    └── HTTP / コマンドによるポスト健全性プローブ (HealthCheck)         │
+   └────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## ✨ 主要機能
+
+1. **📦 再帰的パッケージ依存解決 & バンドル化**:
+   - APT (`dpkg`, `apt-get`) および RPM/DNF の推移的依存パッケージをインターネット側で再帰的に解決・一括ダウンロード。
+   - アプリケーションバイナリ、設定テンプレート、静的アセットを単一の暗号化アーカイブ (`.tar.gz`) へ集約。
+2. **🛡️ 暗号学的完全性 & 有効期限検証**:
+   - Ed25519 によるデジタル署名と公開鍵検証。改ざんされたバンドルはインポート段階で即座に遮断。
+   - マニフェスト内の有効期限（`ExpiresAt`）チェックによる誤搬送・リプレイアタックの防止。
+3. **🔗 改ざん耐性 SHA-256 監査ハッシュチェーン**:
+   - バンドルインポート、リリース切り替え、エージェントデプロイ結果の全履歴を直前ブロックのハッシュと連鎖記録。
+   - ジェネシスブロックからの数学的完全性を即時検証可能（Web UI および `ytagarasu audit verify` CLI）。
+4. **⚡ 差分バンドル（Delta Bundle）エンジン**:
+   - 前バージョンとの差分を自動検知し、追加・変更されたファイルのみを収録（データ転送量を 80〜99% 削減）。
+   - サーバーの CAS（重複排除ブロブストレージ）から未変更ファイルを自動再利用。
+5. **🔄 アトミック設定管理 & 自動ロールバック**:
+   - Go `text/template` による環境変数・ポート等の動的展開。
+   - 反映前の構文検証 (`validateCommand`)、一時ファイル書き出し後の `renameat` アトミックリプレイス。
+   - ヘルスチェック失敗時の即座スナップショット復元（ゼロ人手介入）。
+6. **📊 組み込み HTMX ダッシュボード (Node.js/npm 完全不要)**:
+   - `//go:embed` によりアセット（HTMX、CSS）を Go 単一バイナリに内包。外部 CDN 接続ゼロ。
+   - サービス一覧、Desired State、稼働メトリクス、監査ログ、バンドル手動インポートを Web ブラウザから確認可能。
+7. **🤖 初期ブートストラップ Ansible Role**:
+   - `roles/deploy_agent/` により、ベアメタルや仮想マシンへの `ytagarasu-agent` のバイナリ配置、設定展開、systemd ユニット登録を自動化。
+
+---
+
+## 📸 スクリーンショット
+
+| HTMX ダッシュボード (`/ui`) | 監査ログ & 改ざん耐性ハッシュチェーン (`/ui/audit`) |
 | :---: | :---: |
-| ![Frontend Dashboard](docs/images/frontend_dashboard.png) | `test_reports/frontend_e2e_report.html` |
+| ![Dashboard](docs/images/ytagarasu_dashboard.png) | ![Audit Log](docs/images/ytagarasu_audit.png) |
 
 ---
 
-## 🛠️ クイックスタート
+## 🚀 5分で体験するクイックスタート
 
-### 1. このリポジトリから新規リポジトリを作成
-GitHubの「Use this template」ボタンから、ご自身のリポジトリを作成します。
-
-### 2. モジュール名の変更
-作成したリポジトリの `go.mod` 内のモジュール名を変更します。
-```go
-module github.com/your-username/your-repo-name
-```
-また、`main.go` や `.goreleaser.yaml` などに含まれるプロジェクト名も必要に応じて書き換えてください。
-
-### 3. ローカル即時起動
-Docker 不要で、API サーバーと Web ダッシュボードを即座に起動します：
+### 1. リポジトリのクローン & ビルド
 ```bash
-make run
+git clone https://github.com/sh0jitmy/ytagarasu.git
+cd ytagarasu
+make build
 ```
-- Web ダッシュボード: `http://localhost:3001`
-- REST API / ヘルスチェック: `http://localhost:8080/v1/system/healthz`
+`bin/` ディレクトリに以下の実行バイナリが生成されます：
+- `bin/ytagarasu`: バンドル作成・検証・監査 CLI
+- `bin/ytagarasu-server`: オフライン成果物サーバー & HTMX ダッシュボード
+- `bin/ytagarasu-agent`: ノード常駐デプロイエージェント
 
-### 4. AI カスタムスキルのインストール
+### 2. 成果物サーバーの起動
 ```bash
-make install-all
+./bin/ytagarasu-server --listen :8080 --data-dir ./data/server
 ```
-*(Claude Code 向けに `~/.claude/skills/` へ、Antigravity 向けに `.agents/skills/` へ配備)*
+ブラウザで `http://localhost:8080/ui` にアクセスすると、組み込みダッシュボードが表示されます。
+
+### 3. バンドル署名用の鍵ペア生成
+```bash
+./bin/ytagarasu keygen -d ./keys
+```
+
+### 4. サンプルバンドルの作成・署名・エクスポート
+```bash
+./bin/ytagarasu bundle export \
+    --manifest examples/manifest.yaml \
+    --source examples/ \
+    --output ./bundle-v1.0.0.tar.gz \
+    --key ./keys/private.key \
+    --force
+```
+
+### 5. サーバーへのバンドルインポート
+Web UI（`http://localhost:8080/ui`）からファイルをドラッグ＆ドロップするか、curl でアップロードします：
+```bash
+curl -X POST http://localhost:8080/api/v1/bundles/import \
+    -F "bundle=@./bundle-v1.0.0.tar.gz"
+```
+
+### 6. クライアントエージェントによる適用
+```bash
+./bin/ytagarasu-agent \
+    --server http://localhost:8080 \
+    --service billing-svc \
+    --once
+```
+
+### 7. 監査ハッシュチェーンの改ざん検証
+```bash
+./bin/ytagarasu audit verify --server http://localhost:8080
+```
+`✅ Audit trail is VALID and tamper-free!` と表示され、完全性が確認できます。
 
 ---
 
-## ⚙️ 開発コマンド一覧
+## 🧪 多層 E2E テストフレームワーク
 
-Makefile に定義されている以下のコマンドを使用して開発を進めます：
+本リポジトリは、閉域環境における極めて高い信頼性を担保するため、4層の E2E テストスイートを完備しています：
 
-| コマンド | 説明 |
-| :--- | :--- |
-| `make run` | スタンドアロンサーバー（Core API + Web UI）のローカル一括起動 |
-| `make sqlite-e2e` | Docker 不要の超高速 SQLite E2E テストの実行 |
-| `make frontend-e2e` | スタンドアロン HTMX フロントエンド E2E テスト & スナップショット生成 |
-| `make docker-e2e` | Docker Compose フルスタック E2E テスト & Grafana 検証 |
-| `make ssg-build` | Go テンプレートからの静的サイト事前レンダリング出力 (SSG) |
-| `make demo` | フルスタック・インタラクティブデモの起動 |
-| `make test` | データ競合検知 (`-race`) およびカバレッジ測定付き単体テスト |
-| `make fmt` | ソースコードのフォーマットおよびリンターによる自動修正 |
-| `make lint` | `golangci-lint` を使用した静的解析の実行 |
-| `make vulncheck` | `govulncheck` を使用した脆弱性診断の実行 |
-| `make build` | `bin/app` および `bin/web` へのコンパイル |
-| `make e2e-report` | E2E テスト実行および機密サニタイズ付きスタンドアロン HTML レポート生成 |
-| `make release-check` | `GoReleaser v2` 設定ファイルのバリデーション |
-| `make release-snapshot` | `GoReleaser` によるローカルでのスナップショットビルドテスト |
-| `make license-check` | Go ソースコードのライセンス＆作成者ヘッダーの検証 |
-| `make license-add` | ライセンスヘッダーの自動付与 |
-| `make check` | 同梱スキルのマークダウン構文チェック |
-| `make workflow-check` | GitHub Actions ワークフロー定義ファイルの構文・静的検証 |
-| `make self-eval` | リポジトリ要件の自己評価の実行 (`REQUIREMENTS.md` の更新) |
-| `make clean` | ビルド成果物やテストキャッシュのクリーンアップ |
+| レイヤー | コマンド | 検証内容 |
+| :--- | :--- | :--- |
+| **Layer 1** | `make test` | 単体・結合テスト（`-race`、メモリDB分離、カバレッジ 100%） |
+| **Layer 2** | `make sqlite-e2e` | No-Docker スタンドアロン SQLite ガバナンス・バックアップ検証 |
+| **Layer 3** | `make ytagarasu-e2e` | **Agent-Server 実機デプロイ動作 & HTMX UI 一括 E2E 検証** |
+| **Layer 4** | `make frontend-e2e` | Headless Chrome による自動スナップショット撮影 & HTML レポート |
+
+```bash
+# Agent-Server 実機動作および HTMX UI の完全な E2E テストを実行
+make ytagarasu-e2e
+```
 
 ---
 
-## ☁️ さくらのクラウド Terraform CI/CD
+## 📖 ユーザーマニュアル & ドキュメント
 
-本テンプレートには、さくらのクラウド用の Terraform CI/CD ワークフローが含まれています。`terraform/` ディレクトリ配下のファイルに変更があった場合のみトリガーされます。
+より詳細な運用手順、設定リファレンス、およびトラブルシューティングについては、以下のマニュアルを参照してください：
 
-### 🔑 GitHub Secrets の設定
-以下の GitHub Secrets をリポジトリに登録してください：
-- `SAKURA_ACCESS_TOKEN` / `SAKURA_ACCESS_TOKEN_SECRET`
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
+- 📘 **[詳細ユーザーマニュアル (docs/manual.md)](docs/manual.md)**:
+  - エンドツーエンドの運用フロー（オンライン作成からオフライン適用）
+  - 差分バンドルの作成・運用方法
+  - Ansible による初期導入手順
+  - 設定構文事前検証と自動ロールバックの設計
+  - 監査チェーンの仕組みと復旧手順
+  - CLI コマンドおよび設定ファイル（YAML）完全リファレンス
 
 ---
 
-## 📋 REQUIREMENTS.md による品質自己評価
+## 📄 ライセンス
 
-`make self-eval` コマンドを実行すると、`REQUIREMENTS.md` のチェックボックス（`[x]`）が集計され、適合率（パーセンテージ）が自動計算されてファイル下部に反映されます。
-常に適合率 100% を維持する開発プラクティスを推奨します。
+Apache License 2.0 - 詳細は [LICENSE](LICENSE) を参照してください。
