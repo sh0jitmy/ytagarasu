@@ -1,11 +1,11 @@
 {{ define "components/audit_table.html" }}
 <div id="audit-table-container">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
     <div>
-      <h3 style="font-size: 1.1rem; color: var(--text-primary);">改ざん耐性 SHA-256 監査チェーン</h3>
-      <p style="font-size: 0.85rem; color: var(--text-secondary);">各レコードは直前ブロックのハッシュと連鎖しており、改ざんや順序の変更が不可能です。</p>
+      <h3 style="font-size: 1.1rem; color: var(--text-primary); margin: 0 0 0.25rem 0;">改ざん耐性 SHA-256 監査チェーン</h3>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">各レコードは直前ブロックのハッシュと連鎖しており、改ざんや順序の変更が不可能です。</p>
     </div>
-    <div style="display: flex; gap: 0.75rem; align-items: center;">
+    <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
       <span id="verify-badge">
         {{ if .Verified }}
           <span class="badge badge-success">✅ チェーン整合性確認済み ({{ .TotalCount }} レコード)</span>
@@ -19,8 +19,50 @@
         🔍 即時チェーン検証実行
       </button>
       <button class="btn btn-secondary" hx-get="/ui/components/audit-table" hx-target="#audit-table-container" hx-swap="outerHTML">
-        🔄 最新化
+        🔄 リセット
       </button>
+    </div>
+  </div>
+
+  <!-- Realtime Filter & Search Bar -->
+  <div class="filter-bar" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 240px;">
+      <span style="font-size: 0.9rem;">🔎</span>
+      <input type="text"
+             name="q"
+             value="{{ .SearchQuery }}"
+             placeholder="エンティティID / 実行者 / ハッシュ / イベント名で検索..."
+             class="filter-input"
+             hx-get="/ui/components/audit-table"
+             hx-trigger="input changed delay:300ms"
+             hx-target="#audit-table-container"
+             hx-swap="outerHTML"
+             hx-include="[name='event_type']"
+             style="width: 100%; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0.4rem 0.75rem; color: var(--text-primary); font-size: 0.85rem;">
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+      <label for="event-filter" style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">イベント種別:</label>
+      <select id="event-filter"
+              name="event_type"
+              class="filter-select"
+              hx-get="/ui/components/audit-table"
+              hx-trigger="change"
+              hx-target="#audit-table-container"
+              hx-swap="outerHTML"
+              hx-include="[name='q']"
+              style="background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0.4rem 0.75rem; color: var(--text-primary); font-size: 0.85rem;">
+        <option value="" {{ if eq .SelectedEvent "" }}selected{{ end }}>全イベント (All)</option>
+        <option value="release.import" {{ if eq .SelectedEvent "release.import" }}selected{{ end }}>release.import (成果物展開)</option>
+        <option value="release.import.failed" {{ if eq .SelectedEvent "release.import.failed" }}selected{{ end }}>release.import.failed (インポート失敗)</option>
+        <option value="agent.deploy.success" {{ if eq .SelectedEvent "agent.deploy.success" }}selected{{ end }}>agent.deploy.success (デプロイ成功)</option>
+        <option value="agent.rollback" {{ if eq .SelectedEvent "agent.rollback" }}selected{{ end }}>agent.rollback (自動ロールバック)</option>
+        <option value="config.applied" {{ if eq .SelectedEvent "config.applied" }}selected{{ end }}>config.applied (設定反映)</option>
+      </select>
+    </div>
+
+    <div style="font-size: 0.85rem; color: var(--text-muted); margin-left: auto;">
+      表示: <strong style="color: var(--accent-primary);">{{ .FilteredCount }}</strong> / {{ .TotalCount }} 件
     </div>
   </div>
 
@@ -50,6 +92,8 @@
                 <span class="badge badge-info">{{ .EventType }}</span>
               {{ else if eq .EventType "agent.rollback" }}
                 <span class="badge badge-danger">{{ .EventType }}</span>
+              {{ else if eq .EventType "release.import.failed" }}
+                <span class="badge badge-danger">{{ .EventType }}</span>
               {{ else }}
                 <span class="badge badge-warning">{{ .EventType }}</span>
               {{ end }}
@@ -67,7 +111,7 @@
         {{ else }}
           <tr>
             <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-              監査ログレコードがありません。
+              一致する監査ログレコードがありません。
             </td>
           </tr>
         {{ end }}

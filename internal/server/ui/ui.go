@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/sh0jitmy/ytagarasu/internal/audit"
+	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
 )
@@ -44,6 +45,24 @@ type ServiceView struct {
 	Checksum      string
 	ArtifactCount int
 	UpdatedAt     string
+	Status        string
+}
+
+// ServiceDetailView holds detailed manifest and artifact metadata for a single service.
+type ServiceDetailView struct {
+	ServiceID        string
+	ReleaseVersion   string
+	TargetOS         string
+	TargetRelease    string
+	TargetArch       string
+	ManifestYAML     string
+	RollbackPolicy   string
+	Applications     []manifest.Application
+	Configs          []manifest.Config
+	Services         []manifest.Service
+	Artifacts        []store.ReleaseArtifact
+	HasActiveRelease bool
+	Error            string
 }
 
 // AuditView represents an audit log entry in the UI.
@@ -70,11 +89,14 @@ type DashboardData struct {
 
 // AuditData is the view model for the audit page.
 type AuditData struct {
-	ActiveTab   string
-	TotalCount  int
-	Verified    bool
-	VerifyError string
-	Records     []AuditView
+	ActiveTab     string
+	TotalCount    int
+	FilteredCount int
+	SelectedEvent string
+	SearchQuery   string
+	Verified      bool
+	VerifyError   string
+	Records       []AuditView
 }
 
 // UI handles dashboard and audit HTML pages and HTMX components.
@@ -143,6 +165,7 @@ func (u *UI) RegisterRoutes(mux *http.ServeMux) {
 
 	// HTMX Partial Components
 	mux.HandleFunc("GET /ui/components/services", u.handleServicesComponent)
+	mux.HandleFunc("GET /ui/components/service-detail", u.handleServiceDetailComponent)
 	mux.HandleFunc("GET /ui/components/system-metrics", u.handleSystemMetricsComponent)
 	mux.HandleFunc("GET /ui/components/audit-table", u.handleAuditTableComponent)
 
@@ -171,12 +194,14 @@ func (u *UI) buildDashboardData(ctx context.Context) (DashboardData, error) {
 		artCount := 0
 		checksum := ""
 		activeRelVer := ""
+		status := "inactive"
 
 		if s.ActiveReleaseID != "" {
 			rel, getErr := u.db.GetActiveRelease(ctx, s.ID)
 			if getErr == nil && rel != nil {
 				totalReleases++
 				activeRelVer = rel.ReleaseVersion
+				status = "active"
 				h := sha256.Sum256([]byte(rel.ManifestYAML))
 				checksum = hex.EncodeToString(h[:])
 				artifacts, artErr := u.db.GetReleaseArtifacts(ctx, rel.ID)
@@ -192,6 +217,7 @@ func (u *UI) buildDashboardData(ctx context.Context) (DashboardData, error) {
 			Checksum:      checksum,
 			ArtifactCount: artCount,
 			UpdatedAt:     s.UpdatedAt.Format("2006-01-02 15:04:05"),
+			Status:        status,
 		})
 	}
 
@@ -206,14 +232,31 @@ func (u *UI) buildDashboardData(ctx context.Context) (DashboardData, error) {
 	}, nil
 }
 
-func (u *UI) buildAuditData(ctx context.Context) (AuditData, error) {
-	records, err := u.db.ListAuditLogs(ctx, 200, 0)
+func (u *UI) buildAuditData(ctx context.Context, eventType, query string) (AuditData, error) {
+	records, err := u.db.ListAuditLogs(ctx, 500, 0)
 	if err != nil {
 		return AuditData{}, err
 	}
 
+	eventType = strings.TrimSpace(eventType)
+	query = strings.ToLower(strings.TrimSpace(query))
+
 	auditViews := make([]AuditView, 0, len(records))
 	for _, r := range records {
+		if eventType != "" && r.EventType != eventType {
+			continue
+		}
+		if query != "" {
+			matches := strings.Contains(strings.ToLower(r.EventType), query) ||
+				strings.Contains(strings.ToLower(r.EntityID), query) ||
+				strings.Contains(strings.ToLower(r.Actor), query) ||
+				strings.Contains(strings.ToLower(r.RecordHash), query) ||
+				strings.Contains(strings.ToLower(r.PayloadDigest), query)
+			if !matches {
+				continue
+			}
+		}
+
 		auditViews = append(auditViews, AuditView{
 			Sequence:       r.Sequence,
 			Timestamp:      r.Timestamp.Format("2006-01-02 15:04:05"),
@@ -238,11 +281,14 @@ func (u *UI) buildAuditData(ctx context.Context) (AuditData, error) {
 	}
 
 	return AuditData{
-		ActiveTab:   "audit",
-		TotalCount:  len(records),
-		Verified:    verified,
-		VerifyError: verifyErrStr,
-		Records:     auditViews,
+		ActiveTab:     "audit",
+		TotalCount:    len(records),
+		FilteredCount: len(auditViews),
+		SelectedEvent: eventType,
+		SearchQuery:   query,
+		Verified:      verified,
+		VerifyError:   verifyErrStr,
+		Records:       auditViews,
 	}, nil
 }
 
@@ -263,7 +309,9 @@ func (u *UI) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) handleAudit(w http.ResponseWriter, r *http.Request) {
-	data, err := u.buildAuditData(r.Context())
+	eventType := r.URL.Query().Get("event_type")
+	query := r.URL.Query().Get("q")
+	data, err := u.buildAuditData(r.Context(), eventType, query)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed loading audit logs: %v", err), http.StatusInternalServerError)
 		return
@@ -294,6 +342,54 @@ func (u *UI) handleServicesComponent(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(buf.Bytes())
 }
 
+func (u *UI) handleServiceDetailComponent(w http.ResponseWriter, r *http.Request) {
+	serviceID := strings.TrimSpace(r.URL.Query().Get("service_id"))
+	if serviceID == "" {
+		serviceID = strings.TrimSpace(r.URL.Query().Get("id"))
+	}
+
+	detail := ServiceDetailView{
+		ServiceID: serviceID,
+	}
+
+	if serviceID == "" {
+		detail.Error = "サービスIDが指定されていません。"
+	} else {
+		rel, err := u.db.GetActiveRelease(r.Context(), serviceID)
+		if err != nil || rel == nil {
+			detail.HasActiveRelease = false
+		} else {
+			detail.HasActiveRelease = true
+			detail.ReleaseVersion = rel.ReleaseVersion
+			detail.ManifestYAML = rel.ManifestYAML
+
+			artifacts, _ := u.db.GetReleaseArtifacts(r.Context(), rel.ID)
+			detail.Artifacts = artifacts
+
+			m, parseErr := manifest.Parse([]byte(rel.ManifestYAML))
+			if parseErr == nil && m != nil {
+				detail.Applications = m.Applications
+				detail.Configs = m.Configs
+				detail.Services = m.Services
+				detail.RollbackPolicy = string(m.Rollback.Strategy)
+				if len(m.Targets) > 0 {
+					detail.TargetOS = m.Targets[0].OS
+					detail.TargetRelease = m.Targets[0].Release
+					detail.TargetArch = m.Targets[0].Arch
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var buf bytes.Buffer
+	if err := u.componentsTmpl.ExecuteTemplate(&buf, "components/service_detail.html", detail); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write(buf.Bytes())
+}
+
 func (u *UI) handleSystemMetricsComponent(w http.ResponseWriter, r *http.Request) {
 	data, err := u.buildDashboardData(r.Context())
 	if err != nil {
@@ -311,7 +407,9 @@ func (u *UI) handleSystemMetricsComponent(w http.ResponseWriter, r *http.Request
 }
 
 func (u *UI) handleAuditTableComponent(w http.ResponseWriter, r *http.Request) {
-	data, err := u.buildAuditData(r.Context())
+	eventType := r.URL.Query().Get("event_type")
+	query := r.URL.Query().Get("q")
+	data, err := u.buildAuditData(r.Context(), eventType, query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

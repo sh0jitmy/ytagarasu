@@ -1,0 +1,176 @@
+{{ define "components/service_detail.html" }}
+<div class="modal-backdrop" onclick="if(event.target === this) document.getElementById('modal-container').innerHTML = '';">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 1.5rem;">📦</span>
+        <div>
+          <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin: 0;">
+            {{ .ServiceID }}
+          </h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">
+            アクティブリリース詳細インスペクト
+          </span>
+        </div>
+      </div>
+      <button class="btn btn-secondary modal-close-btn" onclick="document.getElementById('modal-container').innerHTML = '';">
+        ✕ 閉じる
+      </button>
+    </div>
+
+    <div class="modal-body">
+      {{ if .Error }}
+        <div class="alert alert-danger" style="margin-bottom: 1rem;">
+          {{ .Error }}
+        </div>
+      {{ else if not .HasActiveRelease }}
+        <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+          このサービスにはまだアクティブリリースが登録されていません。
+        </div>
+      {{ else }}
+        <!-- Release Overview Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem;">
+          <div style="background: var(--bg-surface-elevated); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">リリースバージョン</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--accent-primary); font-family: var(--font-mono);">
+              {{ .ReleaseVersion }}
+            </div>
+          </div>
+          <div style="background: var(--bg-surface-elevated); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">ターゲット環境</div>
+            <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">
+              {{ if .TargetOS }}{{ .TargetOS }} {{ .TargetRelease }} ({{ .TargetArch }}){{ else }}Generic Linux{{ end }}
+            </div>
+          </div>
+          <div style="background: var(--bg-surface-elevated); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">ロールバックポリシー</div>
+            <div style="font-size: 0.95rem; font-weight: 600; color: var(--warning);">
+              {{ if .RollbackPolicy }}{{ .RollbackPolicy }}{{ else }}immediate{{ end }}
+            </div>
+          </div>
+          <div style="background: var(--bg-surface-elevated); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">登録アーティファクト</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--success); font-family: var(--font-mono);">
+              {{ len .Artifacts }} 件
+            </div>
+          </div>
+        </div>
+
+        <!-- Deployable Applications -->
+        {{ if .Applications }}
+        <div style="margin-bottom: 1.25rem;">
+          <h4 style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">
+            🚀 デプロイ対象バイナリ・アプリケーション
+          </h4>
+          <table class="custom-table" style="font-size: 0.8rem;">
+            <thead>
+              <tr>
+                <th>アプリ名</th>
+                <th>スタック</th>
+                <th>配置先パス</th>
+                <th>実行権限</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range .Applications }}
+              <tr>
+                <td><strong>{{ .Name }}</strong></td>
+                <td><span class="badge badge-info">{{ .Type }}</span></td>
+                <td class="mono" style="color: var(--text-secondary);">{{ if .Destination }}{{ .Destination }}{{ else }}/opt/{{ $.ServiceID }}/bin/{{ .Name }}{{ end }}</td>
+                <td class="mono">{{ if .Permissions }}{{ .Permissions }}{{ else }}0755{{ end }}</td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+        {{ end }}
+
+        <!-- Configurations & ValidateCommand -->
+        {{ if .Configs }}
+        <div style="margin-bottom: 1.25rem;">
+          <h4 style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">
+            ⚙️ 設定テンプレート & 事前バリデーション
+          </h4>
+          <table class="custom-table" style="font-size: 0.8rem;">
+            <thead>
+              <tr>
+                <th>テンプレート</th>
+                <th>配置先</th>
+                <th>SOPS暗号化</th>
+                <th>検証コマンド (validateCommand)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ range .Configs }}
+              <tr>
+                <td class="mono">{{ .Template }}</td>
+                <td class="mono" style="color: var(--text-secondary);">{{ .Destination }}</td>
+                <td>
+                  {{ if .SOPSEncrypted }}
+                    <span class="badge badge-warning">🔒 SOPS</span>
+                  {{ else }}
+                    <span class="badge badge-info">標準</span>
+                  {{ end }}
+                </td>
+                <td class="mono" style="color: var(--accent-primary);">
+                  {{ if .ValidateCommand }}<code>{{ .ValidateCommand }}</code>{{ else }}-{{ end }}
+                </td>
+              </tr>
+              {{ end }}
+            </tbody>
+          </table>
+        </div>
+        {{ end }}
+
+        <!-- CAS Artifacts Blobs -->
+        {{ if .Artifacts }}
+        <div style="margin-bottom: 1.25rem;">
+          <h4 style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">
+            📦 CAS ハッシュ登録成果物 (Blobs)
+          </h4>
+          <div style="max-height: 140px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+            <table class="custom-table" style="font-size: 0.75rem; margin-bottom: 0;">
+              <thead>
+                <tr>
+                  <th>相対パス</th>
+                  <th>SHA-256 チェックサム</th>
+                  <th>サイズ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{ range .Artifacts }}
+                <tr>
+                  <td class="mono">{{ .RelPath }}</td>
+                  <td class="mono" style="color: var(--text-muted);" title="{{ .SHA256Hash }}">{{ printf "%.16s..." .SHA256Hash }}</td>
+                  <td class="mono">{{ .SizeBytes }} B</td>
+                </tr>
+                {{ end }}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {{ end }}
+
+        <!-- Raw Manifest YAML toggle -->
+        <div>
+          <details style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem;">
+            <summary style="cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--accent-primary);">
+              📄 Raw Manifest YAML を表示
+            </summary>
+            <pre style="margin-top: 0.5rem; max-height: 200px; overflow-y: auto; font-size: 0.75rem; background: var(--bg-base); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-family: var(--font-mono);">{{ .ManifestYAML }}</pre>
+          </details>
+        </div>
+      {{ end }}
+    </div>
+
+    <div class="modal-footer">
+      <a href="/api/v1/services/{{ .ServiceID }}/desired" target="_blank" class="btn btn-secondary" style="font-size: 0.8rem;">
+        Desired YAML 直接取得 ↗
+      </a>
+      <button class="btn btn-primary" onclick="document.getElementById('modal-container').innerHTML = '';" style="font-size: 0.8rem;">
+        閉じる
+      </button>
+    </div>
+  </div>
+</div>
+{{ end }}

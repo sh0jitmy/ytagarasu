@@ -170,15 +170,42 @@ rollback:
 	assert.Contains(t, string(auditBody), "release.import")
 	assert.Contains(t, string(auditBody), "web-portal:v2.0.0")
 
-	// Trigger verify-audit HTMX action
-	verifyResp, err := client.Get(ts.URL + "/ui/actions/verify-audit")
+	// 7. Verify Service Detail Modal Component
+	modalResp, err := client.Get(ts.URL + "/ui/components/service-detail?service_id=web-portal")
 	require.NoError(t, err)
 	defer func() {
-		_ = verifyResp.Body.Close()
+		_ = modalResp.Body.Close()
 	}()
-	assert.Equal(t, http.StatusOK, verifyResp.StatusCode)
-	verifyBody, err := io.ReadAll(verifyResp.Body)
+	assert.Equal(t, http.StatusOK, modalResp.StatusCode)
+	modalBody, err := io.ReadAll(modalResp.Body)
 	require.NoError(t, err)
-	assert.Contains(t, string(verifyBody), "チェーン整合性確認済み")
-	assert.Contains(t, string(verifyBody), "badge-success")
+	assert.Contains(t, string(modalBody), "アクティブリリース詳細インスペクト")
+	assert.Contains(t, string(modalBody), "web-portal")
+	assert.Contains(t, string(modalBody), "v2.0.0")
+	assert.Contains(t, string(modalBody), "ubuntu 24.04 (amd64)")
+	assert.Contains(t, string(modalBody), "Raw Manifest YAML")
+
+	// 8. Verify Audit Realtime Filter Component
+	filterResp, err := client.Get(ts.URL + "/ui/components/audit-table?event_type=release.import&q=web-portal")
+	require.NoError(t, err)
+	defer func() {
+		_ = filterResp.Body.Close()
+	}()
+	assert.Equal(t, http.StatusOK, filterResp.StatusCode)
+	filterBody, err := io.ReadAll(filterResp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(filterBody), "release.import")
+	assert.Contains(t, string(filterBody), "web-portal:v2.0.0")
+	assert.Contains(t, string(filterBody), "表示:")
+
+	// 9. Verify Empty Filter Result
+	emptyFilterResp, err := client.Get(ts.URL + "/ui/components/audit-table?q=nonexistent_xyz")
+	require.NoError(t, err)
+	defer func() {
+		_ = emptyFilterResp.Body.Close()
+	}()
+	assert.Equal(t, http.StatusOK, emptyFilterResp.StatusCode)
+	emptyFilterBody, err := io.ReadAll(emptyFilterResp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(emptyFilterBody), "一致する監査ログレコードがありません")
 }

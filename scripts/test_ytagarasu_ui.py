@@ -133,6 +133,28 @@ def main():
         log(f"✗ Verify audit action failed: {e}", "ERROR")
         test_results.append(("In-place Chain Verification Action", "FAIL", str(e)))
 
+    # 4. Test Service Detail Modal Component
+    try:
+        modal_html = http_get(f"{SERVER_URL}/ui/components/service-detail?service_id=payment-gw")
+        assert "アクティブリリース詳細インスペクト" in modal_html
+        assert "payment-gw" in modal_html
+        log("✓ Service detail modal endpoint validated.")
+        test_results.append(("Service Detail Modal Component", "PASS", "Displays manifest metadata and artifact blobs."))
+    except Exception as e:
+        log(f"✗ Service detail modal failed: {e}", "ERROR")
+        test_results.append(("Service Detail Modal Component", "FAIL", str(e)))
+
+    # 5. Test Audit Realtime Filter Component
+    try:
+        filtered_audit_html = http_get(f"{SERVER_URL}/ui/components/audit-table?event_type=release.import&q=payment-gw")
+        assert "audit-table-container" in filtered_audit_html
+        assert "payment-gw" in filtered_audit_html
+        log("✓ Audit realtime filter endpoint validated.")
+        test_results.append(("Audit Realtime Filter Component", "PASS", "Successfully filters records by event type and query."))
+    except Exception as e:
+        log(f"✗ Audit realtime filter failed: {e}", "ERROR")
+        test_results.append(("Audit Realtime Filter Component", "FAIL", str(e)))
+
     # 4. Take Screenshots
     dash_img_ok = take_screenshot(f"{SERVER_URL}/ui", DASHBOARD_SCREENSHOT)
     audit_img_ok = take_screenshot(f"{SERVER_URL}/ui/audit", AUDIT_SCREENSHOT)
