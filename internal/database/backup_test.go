@@ -22,6 +22,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,7 +42,8 @@ func TestBackupAndRestore_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	client, err := NewClient(ctx, "sqlite3", "file:backup_lifecycle_test?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(1)", t.Name())
+	client, err := NewClient(ctx, "sqlite3", dsn)
 	require.NoError(t, err)
 	defer func() { _ = client.Close() }()
 
@@ -122,7 +124,8 @@ func TestRestoreBackupArchive_CorruptedChecksum(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	client, err := NewClient(ctx, "sqlite3", "file:corrupt_test?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(1)", t.Name())
+	client, err := NewClient(ctx, "sqlite3", dsn)
 	require.NoError(t, err)
 	defer func() { _ = client.Close() }()
 

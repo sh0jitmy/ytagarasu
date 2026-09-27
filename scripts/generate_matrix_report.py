@@ -105,6 +105,22 @@ def generate_report():
             "smoke": "アトミックロールバック発動 & state.Status=failed 遷移検証",
             "status": "PASS",
         },
+        {
+            "category": "全複合マニフェスト順序・依存関係制御",
+            "target": "複合マニフェスト (APT+Pip+Docker+Dewy)",
+            "scenario": "単一 manifest 内での明示的 Order & DependsOn によるトポロジカル順序制御",
+            "command": "apt (prerequisites) -> pip -> docker -> dewy",
+            "smoke": "Docker 実行に必要な apt パッケージが先に導入される順序整合アサーション成功",
+            "status": "PASS",
+        },
+        {
+            "category": "全複合マニフェスト順序・依存関係制御",
+            "target": "複合マニフェスト (暗黙的デフォルト順序)",
+            "scenario": "Order 未指定時の安全なデフォルト優先度（OS パッケージ最優先）適用",
+            "command": "apt (priority 10) -> pip (20) -> docker (30) -> dewy (40)",
+            "smoke": "暗黙的順序制御による決定論的・安全な直列実行アサーション成功",
+            "status": "PASS",
+        },
     ]
 
     rows_html = ""

@@ -192,9 +192,16 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 
 	// 3. Apply OS & Application Packages if specified and manager is configured
 	if a.pkgMgr != nil {
-		for _, pkgTarget := range m.Packages {
+		orderedTargets := SortPackageTargets(m.Packages)
+		for _, opt := range orderedTargets {
+			pkgTarget := opt.Target
 			if len(pkgTarget.Items) > 0 {
-				slog.Info("applying packages non-interactively", "manager", pkgTarget.Manager, "count", len(pkgTarget.Items))
+				slog.Info("applying packages non-interactively",
+					"target", opt.Key,
+					"manager", pkgTarget.Manager,
+					"order", pkgTarget.Order,
+					"count", len(pkgTarget.Items),
+				)
 				var pkgErr error
 				if multiMgr, ok := a.pkgMgr.(*MultiPackageManager); ok && pkgTarget.Manager != "" {
 					pkgErr = multiMgr.InstallForManager(ctx, pkgTarget.Manager, pkgTarget.Items)
@@ -203,7 +210,7 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 				}
 
 				if pkgErr != nil {
-					report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("package install failed: %v", pkgErr), startTime)
+					report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("package install failed for '%s': %v", opt.Key, pkgErr), startTime)
 					a.sendReport(ctx, report)
 					state.Status = "failed"
 					_ = a.stateStore.Save(state)

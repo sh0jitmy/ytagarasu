@@ -110,7 +110,37 @@ sequenceDiagram
 
 ---
 
-## 5. エンドツーエンド自律デプロイ検証フロー表
+## 5. 単一マニフェストにおける複合エコシステムの依存関係・順序制御検証仕様
+
+実際の運用環境では、1 つの `manifest.yaml` 内に OS パッケージ（APT/DNF）、言語ランタイム（Pip）、コンテナ（Docker）、バイナリ自動更新（Dewy）が同時に定義されます。
+この際、「Docker の前提となる apt パッケージ（例: `docker.io`, `ca-certificates`）が Docker コンテナイメージのロードよりも確実に先行してインストールされること」を保証するための制御仕様です。
+
+```mermaid
+graph TD
+    subgraph "単一 manifest.yaml 実行パイプライン"
+        manifest["単一マニフェスト (APT + Pip + Docker + Dewy)"] --> sort["エージェント SortPackageTargets()"]
+        sort --> step1["Step 1: OS 前提パッケージ (APT / DNF)<br/><code>docker.io</code>, <code>ca-certificates</code> 等"]
+        step1 --> step2["Step 2: 言語ランタイム (Pip)<br/><code>pydantic</code>, <code>uvicorn</code> 等"]
+        step2 --> step3["Step 3: コンテナランタイム (Docker)<br/><code>app-engine.tar</code> ロード"]
+        step3 --> step4["Step 4: バイナリデプロイ (Dewy)<br/><code>backend-worker</code> pull & 起動"]
+        step4 --> step5["Step 5: 統合ヘルスチェック & 動作確認"]
+    end
+
+    style step1 fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    style step3 fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#f8fafc
+    style step5 fill:#0f172a,stroke:#22c55e,stroke-width:2px,color:#f8fafc
+```
+
+### 順序制御メカニズムとテスト検証仕様
+
+| 検証サブテスト | 制御方式 | マニフェスト設定仕様 | 期待される実行順序 | アサーション基準 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`Explicit_Dependency_And_Order`** | **明示的順序 & 依存関係** | ・`order: 1` (`apt`)<br/>・`order: 2` (`pip`)<br/>・`order: 3, dependsOn: ["os_prerequisites"]` (`docker`)<br/>・`order: 4, dependsOn: ["docker_containers"]` (`dewy`) | `apt-get` &rarr; `python3` &rarr; `docker` &rarr; `dewy` | コマンド実行ログが厳密に `apt` &rarr; `pip` &rarr; `docker` &rarr; `dewy` の順序と一致すること |
+| **`Implicit_Default_Tier_Priority`** | **暗黙的デフォルト優先度** | `order` や `dependsOn` が省略された場合 | OS パッケージ（優先度 10: `apt`）&rarr; 言語（20: `pip`）&rarr; コンテナ（30: `docker`）&rarr; バイナリ（40: `dewy`） | マップ順序のランダム性に影響されず、安全な直列順序（`apt` &rarr; `pip` &rarr; `docker` &rarr; `dewy`）で実行されること |
+
+---
+
+## 6. エンドツーエンド自律デプロイ検証フロー表
 
 各シナリオ実行時にエージェントが自律的に実行する処理ステップとアサーション仕様です。
 
@@ -127,7 +157,7 @@ sequenceDiagram
 
 ---
 
-## 6. GitHub Pages への自動デプロイ仕様
+## 7. GitHub Pages への自動デプロイ仕様
 
 本マトリクステストの実行結果は、GitHub Pages にてリッチなダークモード UI として閲覧できるように統合されています。
 
@@ -152,11 +182,11 @@ graph LR
 | **レポート生成スクリプト** | [`scripts/generate_matrix_report.py`](file:///Users/shjtmy/gravity/ytagarasu/scripts/generate_matrix_report.py) |
 | **出力先ファイル** | `test_reports/matrix_test_report.html` (および `test_reports/index.html` へのリンク統合) |
 | **公開 URL** | `https://sh0jitmy.github.io/ytagarasu/matrix_test_report.html` |
-| **レポート表示項目** | ・全 5 エコシステム（APT, DNF, Pip, Docker, Dewy）の実行ステータス<br/>・再帰推移依存関係解決（APT: 4 パッケージ, DNF: 4 パッケージ）のアサーション結果<br/>・スモークテスト（`openssl version`, `curl --version`, `import pydantic`, `docker inspect`, `dewy --version`）の検証結果<br/>・スモークテスト失敗時のアトミックロールバック検証結果<br/>・ホスト環境のパッケージツール検出状態 |
+| **レポート表示項目** | ・全 5 エコシステム（APT, DNF, Pip, Docker, Dewy）の実行ステータス<br/>・複合マニフェスト（APT+Pip+Docker+Dewy）の依存順序・優先度制御検証結果<br/>・再帰推移依存関係解決（APT: 4 パッケージ, DNF: 4 パッケージ）のアサーション結果<br/>・スモークテスト（`openssl version`, `curl --version`, `import pydantic`, `docker inspect`, `dewy --version`）の検証結果<br/>・スモークテスト失敗時のアトミックロールバック検証結果<br/>・ホスト環境のパッケージツール検出状態 |
 
 ---
 
-## 7. 実行コマンド & CI 運用マトリクス表
+## 8. 実行コマンド & CI 運用マトリクス表
 
 | 実行環境 | 実行コマンド | トリガー | 実行頻度 | 所要時間目安 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -167,7 +197,7 @@ graph LR
 
 ---
 
-## 8. レビュー用確認コマンド
+## 9. レビュー用確認コマンド
 
 ローカル環境にて以下のコマンドを実行することで、再帰推移依存解決・スモークテスト・Dewy を含む本マトリクステストが全 PASS し、HTML レポートが生成されることを確認できます：
 

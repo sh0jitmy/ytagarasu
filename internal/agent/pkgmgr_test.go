@@ -277,3 +277,72 @@ func TestEmptyPackages(t *testing.T) {
 
 	assert.Empty(t, runner.calls)
 }
+
+func TestSortPackageTargets(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Default Tier Priority (apt -> pip -> docker -> dewy)", func(t *testing.T) {
+		t.Parallel()
+		pkgs := map[string]manifest.PackageTarget{
+			"docker-images": {Manager: "docker", Items: []manifest.PackageItem{{Name: "img.tar"}}},
+			"dewy-binaries": {Manager: "dewy", Items: []manifest.PackageItem{{Name: "app"}}},
+			"os-packages":   {Manager: "apt", Items: []manifest.PackageItem{{Name: "libssl3"}}},
+			"python-wheels": {Manager: "pip", Items: []manifest.PackageItem{{Name: "fastapi"}}},
+		}
+
+		sorted := agent.SortPackageTargets(pkgs)
+		require.Len(t, sorted, 4)
+		assert.Equal(t, "os-packages", sorted[0].Key)
+		assert.Equal(t, "apt", sorted[0].Target.Manager)
+
+		assert.Equal(t, "python-wheels", sorted[1].Key)
+		assert.Equal(t, "pip", sorted[1].Target.Manager)
+
+		assert.Equal(t, "docker-images", sorted[2].Key)
+		assert.Equal(t, "docker", sorted[2].Target.Manager)
+
+		assert.Equal(t, "dewy-binaries", sorted[3].Key)
+		assert.Equal(t, "dewy", sorted[3].Target.Manager)
+	})
+
+	t.Run("Explicit Order overrides default priority", func(t *testing.T) {
+		t.Parallel()
+		pkgs := map[string]manifest.PackageTarget{
+			"step-3-os":  {Manager: "apt", Order: 3, Items: []manifest.PackageItem{{Name: "curl"}}},
+			"step-1-bin": {Manager: "dewy", Order: 1, Items: []manifest.PackageItem{{Name: "init"}}},
+			"step-2-pip": {Manager: "pip", Order: 2, Items: []manifest.PackageItem{{Name: "tools"}}},
+		}
+
+		sorted := agent.SortPackageTargets(pkgs)
+		require.Len(t, sorted, 3)
+		assert.Equal(t, "step-1-bin", sorted[0].Key)
+		assert.Equal(t, "step-2-pip", sorted[1].Key)
+		assert.Equal(t, "step-3-os", sorted[2].Key)
+	})
+
+	t.Run("DependsOn Dependency Enforced", func(t *testing.T) {
+		t.Parallel()
+		pkgs := map[string]manifest.PackageTarget{
+			"docker-runtime": {
+				Manager:   "docker",
+				DependsOn: []string{"docker-prerequisites"},
+				Items:     []manifest.PackageItem{{Name: "container.tar"}},
+			},
+			"docker-prerequisites": {
+				Manager: "apt",
+				Items:   []manifest.PackageItem{{Name: "iptables"}, {Name: "ca-certificates"}},
+			},
+		}
+
+		sorted := agent.SortPackageTargets(pkgs)
+		require.Len(t, sorted, 2)
+		assert.Equal(t, "docker-prerequisites", sorted[0].Key)
+		assert.Equal(t, "docker-runtime", sorted[1].Key)
+	})
+
+	t.Run("Empty or nil map returns nil", func(t *testing.T) {
+		t.Parallel()
+		assert.Nil(t, agent.SortPackageTargets(nil))
+		assert.Nil(t, agent.SortPackageTargets(map[string]manifest.PackageTarget{}))
+	})
+}

@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,13 +39,24 @@ import (
 
 // matrixRunner tracks package command execution during matrix E2E.
 type matrixRunner struct {
+	mu               sync.Mutex
 	executedCommands []string
 }
 
 func (m *matrixRunner) Run(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	cmdStr := fmt.Sprintf("%s %s", name, strings.Join(args, " "))
 	m.executedCommands = append(m.executedCommands, cmdStr)
 	return []byte("simulated success output"), nil
+}
+
+func (m *matrixRunner) Commands() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	copied := make([]string, len(m.executedCommands))
+	copy(copied, m.executedCommands)
+	return copied
 }
 
 // ----------------------------------------------------------------------------
@@ -409,4 +421,213 @@ healthChecks:
 	stateData, err := os.ReadFile(stateFile)
 	require.NoError(t, err)
 	assert.Contains(t, string(stateData), "failed")
+}
+
+// ----------------------------------------------------------------------------
+// Scenario 4: Combined Multi-Ecosystem Manifest with Dependency & Ordering
+// Verifies that when APT, Pip, Docker, and Dewy are specified in a SINGLE manifest,
+// execution order is strictly and deterministically controlled (e.g. APT installs
+// docker prerequisites before Docker loads container archives, Pip runs, Dewy pulls).
+// ----------------------------------------------------------------------------
+
+func TestPackageMatrix_CombinedAllEcosystems_Ordered(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Explicit_Dependency_And_Order", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &matrixRunner{}
+		multiMgr := agent.NewMultiPackageManager(nil)
+		multiMgr.Register("apt", agent.NewAptPackageManager(runner))
+		multiMgr.Register("dnf", agent.NewRpmPackageManager(runner))
+		multiMgr.Register("pip", agent.NewPipPackageManager(runner, "python3", "/opt/wheels"))
+		multiMgr.Register("docker", agent.NewDockerPackageManager(runner))
+		multiMgr.Register("dewy", agent.NewDewyPackageManager(runner, "dewy", ""))
+
+		combinedManifestYAML := `
+version: "1.0"
+bundleVersion: "2026.09.27.1"
+release: "combined-matrix-v1.0.0"
+targets:
+  - os: "linux"
+    release: "all"
+    arch: "amd64"
+applications:
+  - name: "combined-app"
+    type: "golang"
+    destination: "bin/combined-app"
+packages:
+  # Defined intentionally in arbitrary / reverse order to verify topological & priority sorting
+  dewy_worker:
+    manager: "dewy"
+    order: 4
+    dependsOn: ["docker_containers"]
+    items:
+      - name: "backend-worker"
+        version: "v2.0.0"
+  docker_containers:
+    manager: "docker"
+    order: 3
+    dependsOn: ["os_prerequisites"]
+    items:
+      - name: "/opt/bundles/containers/service.tar"
+  python_libs:
+    manager: "pip"
+    order: 2
+    dependsOn: ["os_prerequisites"]
+    items:
+      - name: "pydantic"
+        version: "2.6.4"
+  os_prerequisites:
+    manager: "apt"
+    order: 1
+    items:
+      - name: "docker.io"
+        version: "24.0.5"
+      - name: "ca-certificates"
+healthChecks:
+  - type: "command"
+    command: "echo 'all ecosystems successfully verified in sequence'"
+    maxRetries: 2
+    intervalSeconds: 1
+`
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/x-yaml")
+			w.Header().Set("X-Release-ID", "combined-matrix-v1.0.0")
+			w.Header().Set("X-Release-Version", "v1.0.0")
+			_, _ = w.Write([]byte(combinedManifestYAML))
+		}))
+		defer server.Close()
+
+		workDir := t.TempDir()
+		stateFile := filepath.Join(workDir, "state.json")
+		lockFile := filepath.Join(workDir, "agent.lock")
+		installDir := filepath.Join(workDir, "install")
+		require.NoError(t, os.MkdirAll(installDir, 0750))
+
+		ag := agent.NewAgent(agent.Config{
+			ServerURL:    server.URL,
+			ServiceID:    "combined-matrix",
+			StateFile:    stateFile,
+			LockFile:     lockFile,
+			InstallDir:   installDir,
+			PollInterval: 10 * time.Second,
+			Roles:        []string{"all"},
+		}, multiMgr)
+
+		report, err := ag.StepOnce(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.True(t, report.Success, "combined deployment must succeed")
+
+		cmds := runner.Commands()
+		require.Equal(t, 4, len(cmds), "all 4 package manager commands must be recorded")
+
+		var managerSeq []string
+		for _, cmd := range cmds {
+			switch {
+			case strings.HasPrefix(cmd, "apt-get"):
+				managerSeq = append(managerSeq, "apt")
+			case strings.HasPrefix(cmd, "python3"):
+				managerSeq = append(managerSeq, "pip")
+			case strings.HasPrefix(cmd, "docker"):
+				managerSeq = append(managerSeq, "docker")
+			case strings.HasPrefix(cmd, "dewy"):
+				managerSeq = append(managerSeq, "dewy")
+			}
+		}
+
+		expectedSequence := []string{"apt", "pip", "docker", "dewy"}
+		assert.Equal(t, expectedSequence, managerSeq,
+			"Package managers must execute in strict dependency/order: APT prerequisites -> Pip -> Docker -> Dewy")
+	})
+
+	t.Run("Implicit_Default_Tier_Priority", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &matrixRunner{}
+		multiMgr := agent.NewMultiPackageManager(nil)
+		multiMgr.Register("apt", agent.NewAptPackageManager(runner))
+		multiMgr.Register("pip", agent.NewPipPackageManager(runner, "python3", "/opt/wheels"))
+		multiMgr.Register("docker", agent.NewDockerPackageManager(runner))
+		multiMgr.Register("dewy", agent.NewDewyPackageManager(runner, "dewy", ""))
+
+		// No order or dependsOn specified; must fallback to OS(apt) -> pip -> docker -> dewy
+		implicitYAML := `
+version: "1.0"
+bundleVersion: "2026.09.27.1"
+release: "implicit-priority-v1.0.0"
+targets:
+  - os: "linux"
+    release: "all"
+    arch: "amd64"
+applications:
+  - name: "implicit-app"
+    type: "golang"
+    destination: "bin/implicit-app"
+packages:
+  dewy_target:
+    manager: "dewy"
+    items: [{name: "worker"}]
+  docker_target:
+    manager: "docker"
+    items: [{name: "app.tar"}]
+  apt_target:
+    manager: "apt"
+    items: [{name: "libssl3"}]
+  pip_target:
+    manager: "pip"
+    items: [{name: "uvicorn"}]
+`
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/x-yaml")
+			w.Header().Set("X-Release-ID", "implicit-priority-v1.0.0")
+			w.Header().Set("X-Release-Version", "v1.0.0")
+			_, _ = w.Write([]byte(implicitYAML))
+		}))
+		defer server.Close()
+
+		workDir := t.TempDir()
+		stateFile := filepath.Join(workDir, "state.json")
+		lockFile := filepath.Join(workDir, "agent.lock")
+		installDir := filepath.Join(workDir, "install")
+		require.NoError(t, os.MkdirAll(installDir, 0750))
+
+		ag := agent.NewAgent(agent.Config{
+			ServerURL:    server.URL,
+			ServiceID:    "implicit-matrix",
+			StateFile:    stateFile,
+			LockFile:     lockFile,
+			InstallDir:   installDir,
+			PollInterval: 10 * time.Second,
+			Roles:        []string{"all"},
+		}, multiMgr)
+
+		report, err := ag.StepOnce(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, report)
+		assert.True(t, report.Success)
+
+		cmds := runner.Commands()
+		require.Equal(t, 4, len(cmds))
+
+		var managerSeq []string
+		for _, cmd := range cmds {
+			switch {
+			case strings.HasPrefix(cmd, "apt-get"):
+				managerSeq = append(managerSeq, "apt")
+			case strings.HasPrefix(cmd, "python3"):
+				managerSeq = append(managerSeq, "pip")
+			case strings.HasPrefix(cmd, "docker"):
+				managerSeq = append(managerSeq, "docker")
+			case strings.HasPrefix(cmd, "dewy"):
+				managerSeq = append(managerSeq, "dewy")
+			}
+		}
+
+		expectedSequence := []string{"apt", "pip", "docker", "dewy"}
+		assert.Equal(t, expectedSequence, managerSeq,
+			"Implicit order must safely prioritize OS packages (apt) over downstream tools (pip -> docker -> dewy)")
+	})
 }
