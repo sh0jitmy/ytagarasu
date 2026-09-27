@@ -161,6 +161,10 @@ make ytagarasu-e2e
 make matrix-test
 ```
 
+> **🌐 Live E2E Verification Report & UI Snapshots**:
+> Headless Chrome で自動撮影されたダッシュボード・監査チェーン UI のスナップショットと検証結果は、GitHub Pages にて常時公開されています：
+> 👉 **[https://sh0jitmy.github.io/ytagarasu/](https://sh0jitmy.github.io/ytagarasu/)** (日本語 CJK フォント完全対応)
+
 ---
 
 ## 📖 ユーザーマニュアル & ドキュメント

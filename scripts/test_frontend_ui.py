@@ -161,7 +161,7 @@ def capture_screenshots():
     os.makedirs(REPORT_DIR, exist_ok=True)
     os.makedirs(DOCS_IMG_DIR, exist_ok=True)
 
-    if not os.path.exists(CHROME_BIN):
+    if not CHROME_BIN or not os.path.exists(CHROME_BIN):
         log(f"Chrome binary not found at {CHROME_BIN}, skipping screenshot capture.", "WARN")
         return
 
@@ -170,7 +170,13 @@ def capture_screenshots():
         CHROME_BIN,
         "--headless=new",
         "--disable-gpu",
+        "--no-sandbox",
         "--hide-scrollbars",
+        "--lang=ja-JP",
+        "--force-color-profile=srgb",
+        "--font-render-hinting=none",
+        "--disable-font-subpixel-positioning",
+        "--virtual-time-budget=2000",
         "--window-size=1920,1280",
         f"--screenshot={DASHBOARD_SCREENSHOT_PATH}",
         f"{WEB_URL}/"
@@ -189,6 +195,18 @@ def generate_html_report(results):
     if os.path.exists(DASHBOARD_SCREENSHOT_PATH):
         with open(DASHBOARD_SCREENSHOT_PATH, "rb") as f:
             dashboard_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    ytagarasu_dash_b64 = ""
+    ytagarasu_dash_path = os.path.join(DOCS_IMG_DIR, "ytagarasu_dashboard.png")
+    if os.path.exists(ytagarasu_dash_path):
+        with open(ytagarasu_dash_path, "rb") as f:
+            ytagarasu_dash_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    ytagarasu_audit_b64 = ""
+    ytagarasu_audit_path = os.path.join(DOCS_IMG_DIR, "ytagarasu_audit.png")
+    if os.path.exists(ytagarasu_audit_path):
+        with open(ytagarasu_audit_path, "rb") as f:
+            ytagarasu_audit_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     rows_html = ""
     for r in results:
@@ -221,7 +239,7 @@ def generate_html_report(results):
         body {{
             background-color: var(--bg-color);
             color: var(--text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", "Meiryo", sans-serif;
             margin: 0;
             padding: 40px 20px;
         }}
@@ -373,6 +391,30 @@ def generate_html_report(results):
             </div>
         </div>
         ''' if dashboard_b64 else ''}
+
+        {f'''
+        <div class="section">
+            <h2 style="margin-bottom: 16px;">🦅 ytagarasu オフライン配信ダッシュボード (Offline Deployment Platform UI)</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 12px;">
+                Target URL: <code>http://127.0.0.1:18090/ui</code> | Asset: <code>docs/images/ytagarasu_dashboard.png</code>
+            </p>
+            <div class="screenshot-container">
+                <img src="data:image/png;base64,{ytagarasu_dash_b64}" alt="ytagarasu Dashboard Screenshot" />
+            </div>
+        </div>
+        ''' if ytagarasu_dash_b64 else ''}
+
+        {f'''
+        <div class="section">
+            <h2 style="margin-bottom: 16px;">📜 ytagarasu 改ざん耐性 SHA-256 監査チェーン (Audit Trail UI)</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 12px;">
+                Target URL: <code>http://127.0.0.1:18090/ui/audit</code> | Asset: <code>docs/images/ytagarasu_audit.png</code>
+            </p>
+            <div class="screenshot-container">
+                <img src="data:image/png;base64,{ytagarasu_audit_b64}" alt="ytagarasu Audit Log Screenshot" />
+            </div>
+        </div>
+        ''' if ytagarasu_audit_b64 else ''}
     </div>
 </body>
 </html>

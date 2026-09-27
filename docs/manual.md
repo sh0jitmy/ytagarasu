@@ -306,6 +306,15 @@ packages:
   - 定期実行: 毎週日曜 00:00 UTC（日本時間 09:00）自動実行
   - 手動実行: GitHub Actions タブの `Weekly Package Matrix Testing` から `Run workflow` をクリックして即時実行可能。
 
+### 📸 Headless Chrome UI スナップショット & GitHub Pages E2E レポート
+- **公開 URL**: `https://sh0jitmy.github.io/ytagarasu/`
+- **CI 自動生成**:
+  - `make ytagarasu-e2e` および `make frontend-e2e` 実行時に、Headless Chrome を用いてダッシュボード（`docs/images/ytagarasu_dashboard.png`）および監査ログ（`docs/images/ytagarasu_audit.png`）の高解像度スナップショットを自動撮影します。
+- **日本語 CJK フォント完全対応 (豆腐・文字化けゼロガバナンス)**:
+  - CI ランナー（Ubuntu）において `fonts-noto-cjk`, `fonts-ipafont-gothic`, `fonts-vlgothic` を自動インストール。
+  - Chrome 起動オプションに `--lang=ja-JP`, `--force-color-profile=srgb`, `--font-render-hinting=none`, `--virtual-time-budget=2000` を適用。
+  - CSS デザインシステムおよび HTML レポートの `font-family` に `"Noto Sans JP", "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", "Meiryo"` を明記し、GitHub Pages 上で豆腐（`□`）のないクリアで美しい日本語 UI を確実に提供します。
+
 ---
 
 ## 7. CLI コマンドリファレンス

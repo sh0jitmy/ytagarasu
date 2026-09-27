@@ -192,7 +192,12 @@ def capture_screenshot():
         CHROME_BIN,
         "--headless=new",
         "--disable-gpu",
+        "--no-sandbox",
         "--hide-scrollbars",
+        "--lang=ja-JP",
+        "--force-color-profile=srgb",
+        "--font-render-hinting=none",
+        "--disable-font-subpixel-positioning",
         "--window-size=1920,1200",
         f"--screenshot={SCREENSHOT_PATH}",
         f"{GRAFANA_URL}/d/{DASHBOARD_UID}?kiosk"
@@ -239,7 +244,7 @@ def generate_html_report(results):
             --text-secondary: #94a3b8;
             --accent-color: #38bdf8;
             --success-color: #22c55e;
-            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'BIZ UDPGothic', 'Meiryo', Helvetica, Arial, sans-serif;
         }}
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{

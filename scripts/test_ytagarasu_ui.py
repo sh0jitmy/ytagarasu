@@ -79,6 +79,11 @@ def take_screenshot(url, output_path, width=1440, height=900):
         "--disable-gpu",
         "--no-sandbox",
         "--hide-scrollbars",
+        "--lang=ja-JP",
+        "--force-color-profile=srgb",
+        "--font-render-hinting=none",
+        "--disable-font-subpixel-positioning",
+        "--virtual-time-budget=2000",
         f"--window-size={width},{height}",
         f"--screenshot={output_path}",
         url,
@@ -178,7 +183,7 @@ def main():
   <meta charset="UTF-8">
   <title>ytagarasu UI E2E Test Report</title>
   <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #090d16; color: #f8fafc; padding: 2rem; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", "Meiryo", sans-serif; background: #090d16; color: #f8fafc; padding: 2rem; }}
     .card {{ background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }}
     .badge-pass {{ background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 0.25rem 0.6rem; border-radius: 9999px; font-weight: bold; }}
     .badge-fail {{ background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 0.25rem 0.6rem; border-radius: 9999px; font-weight: bold; }}
