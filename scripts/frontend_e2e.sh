@@ -118,7 +118,7 @@ done
 # 5. Execute Python Frontend UI & Snapshot Verification
 echo -e "\n${YELLOW}[Step 5/5] Running Headless Chrome E2E Verification & Snapshot Suite...${NC}"
 WEB_URL="http://127.0.0.1:${WEB_PORT}" CORE_URL="http://127.0.0.1:${SERVER_PORT}" \
-    python3 scripts/test_frontend_ui.py
+    python3 -u scripts/test_frontend_ui.py
 
 # 6. Ensure Package Matrix report and Unified Portal are generated
 if [ ! -f "$REPORT_DIR/matrix_test_report.html" ]; then

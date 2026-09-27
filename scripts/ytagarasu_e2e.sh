@@ -255,8 +255,8 @@ echo -e "${GREEN}✓ Manifest Discovery Survey action verified.${NC}"
 # 7. Visual UI E2E & Snapshot generation
 if command -v python3 > /dev/null 2>&1; then
     echo -e "\n${YELLOW}Running visual UI verification and screenshot capture...${NC}"
-    SERVER_URL="http://127.0.0.1:${SERVER_PORT}" python3 scripts/test_ytagarasu_ui.py
-    python3 scripts/generate_e2e_portal.py || true
+    SERVER_URL="http://127.0.0.1:${SERVER_PORT}" python3 -u scripts/test_ytagarasu_ui.py
+    python3 -u scripts/generate_e2e_portal.py || true
 fi
 
 echo -e "\n${GREEN}================================================================${NC}"
