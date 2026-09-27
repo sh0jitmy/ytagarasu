@@ -361,6 +361,22 @@ def generate_html_report(results):
             </div>
         </div>
 
+        <div class="section" style="border-left: 4px solid #38bdf8;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h2 style="margin: 0; font-size: 20px;">📦 全パッケージエコシステム網羅性＆動作検証レポート</h2>
+                    <p style="color: var(--text-secondary); font-size: 14px; margin-top: 4px;">
+                        APT (Debian/Ubuntu), DNF (RHEL/Rocky), Pip, Docker, Dewy (プル型バイナリデプロイ) の全網羅性・再帰依存性・スモークテスト検証
+                    </p>
+                </div>
+                <div>
+                    <a href="matrix_test_report.html" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
+                        <span>📊 マトリクス詳細レポートを開く &rarr;</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <div class="section">
             <h2 style="margin-bottom: 16px;">📋 HTMX Panel & Component Value Assertions</h2>
             <table>

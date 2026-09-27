@@ -298,18 +298,26 @@ packages:
 | :--- | :--- | :--- | :--- |
 | **単体テスト & レース検証** | `make test` | ロジック層、DB接続プール、100% カバレッジ | PR 作成時・ローカル開発 |
 | **Agent-Server E2E & UI 視覚検証** | `make ytagarasu-e2e` | 実バイナリ通信、ロールバック、Headless Chrome UI 画像検証 | PR 作成時・マージ前 CI |
-| **全パッケージ種別網羅テスト** | `make matrix-test` | APT, DNF, Pip, Docker の全 4 種別のオフライン適用シミュレーション | 手動実行 / 週次スケジュール CI |
+| **全パッケージ種別網羅テスト** | `make matrix-test` | APT, DNF, Pip, Docker, Dewy の全 5 種別のオフライン適用シミュレーション、再帰推移依存関係の全件取得検証、スモークテスト（実機動作確認）、およびスタンドアロン HTML レポート生成 | 手動実行 / 週次スケジュール CI |
 
 ### 週次スケジュールテスト (GitHub Actions)
 - **ワークフロー**: `.github/workflows/weekly-package-matrix.yml`
 - **トリガー**:
   - 定期実行: 毎週日曜 00:00 UTC（日本時間 09:00）自動実行
   - 手動実行: GitHub Actions タブの `Weekly Package Matrix Testing` から `Run workflow` をクリックして即時実行可能。
+- **検証項目**:
+  1. **全 5 パッケージエコシステム網羅**: APT, DNF, Pip, Docker, Dewy (プル型バイナリデプロイ)
+  2. **再帰的推移依存関係の全件取得**: APT (libssl3, libc6) および DNF (apr, glibc) の依存ツリー完全解決
+  3. **インストール後スモークテスト**: 各パッケージ配置後の実機コマンド実行（`openssl version`, `curl --version`, `import pydantic`, `docker inspect`, `dewy --version`）による正常動作担保
+  4. **アトミック自動ロールバック**: スモークテスト失敗時に旧バイナリ・旧設定へ即座に原状復帰し、本番ダウンタイムを阻止
 
 ### 📸 Headless Chrome UI スナップショット & GitHub Pages E2E レポート
-- **公開 URL**: `https://sh0jitmy.github.io/ytagarasu/`
+- **公開 URL**:
+  - E2E 総合テストレポート: `https://sh0jitmy.github.io/ytagarasu/`
+  - パッケージマトリクス詳細レポート: `https://sh0jitmy.github.io/ytagarasu/matrix_test_report.html`
 - **CI 自動生成**:
   - `make ytagarasu-e2e` および `make frontend-e2e` 実行時に、Headless Chrome を用いてダッシュボード（`docs/images/ytagarasu_dashboard.png`）および監査ログ（`docs/images/ytagarasu_audit.png`）の高解像度スナップショットを自動撮影します。
+  - `make matrix-test` 実行時に、`scripts/generate_matrix_report.py` によりダークモード対応のスタンドアロン HTML レポート（`test_reports/matrix_test_report.html`）を自動生成し、GitHub Pages へ自動デプロイします。
 - **日本語 CJK フォント完全対応 (豆腐・文字化けゼロガバナンス)**:
   - CI ランナー（Ubuntu）において `fonts-noto-cjk`, `fonts-ipafont-gothic`, `fonts-vlgothic` を自動インストール。
   - Chrome 起動オプションに `--lang=ja-JP`, `--force-color-profile=srgb`, `--font-render-hinting=none`, `--virtual-time-budget=2000` を適用。
