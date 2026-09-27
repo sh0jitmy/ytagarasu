@@ -19,11 +19,13 @@
    - [Step 8: 自動ロールバックの挙動と復元確認](#step-8-自動ロールバックの挙動と復元確認)
    - [Step 9: 暗号学的改ざん検証 (監査ハッシュチェーン)](#step-9-暗号学的改ざん検証-監査ハッシュチェーン)
 4. [HTMX Web ダッシュボード操作ガイド](#4-htmx-web-ダッシュボード操作ガイド)
-5. [CLI コマンドリファレンス](#5-cli-コマンドリファレンス)
-6. [設定ファイルリファレンス](#6-設定ファイルリファレンス)
+5. [多種パッケージエコシステム対応 (APT, DNF, Pip, Docker)](#5-多種パッケージエコシステム対応-apt-dnf-pip-docker)
+6. [多層 E2E テスト & 週次スケジュールテスト運用](#6-多層-e2e-テスト--週次スケジュールテスト運用)
+7. [CLI コマンドリファレンス](#7-cli-コマンドリファレンス)
+8. [設定ファイルリファレンス](#8-設定ファイルリファレンス)
    - [manifest.yaml 仕様](#manifestyaml-仕様)
    - [agent.yaml 仕様](#agentyaml-仕様)
-7. [トラブルシューティング (FAQ)](#7-トラブルシューティング-faq)
+9. [トラブルシューティング (FAQ)](#9-トラブルシューティング-faq)
 
 ---
 
@@ -213,19 +215,100 @@ ytagarasu audit verify --server http://<server-ip>:8080
 Node.js や npm、外部 CDN を一切使用しない組み込み HTMX ダッシュボードが提供されます。
 
 - **URL**: `http://<server-ip>:8080/ui`
-- **主要ビュー**:
+- **主要ビューとインタラクション**:
   1. **📊 ダッシュボード (`/ui`)**:
-     - 登録サービス一覧、各サービスのアクティブリリースバージョン、マニフェストチェックサム。
-     - リアルタイムシステム稼働状態（メモリ使用量、Goroutine数、総リリース数）。
-     - バンドル手動インポート用アップロードフォーム。
+     - **サービス一覧 & ステータスバッジ**: 登録サービス一覧、稼働状態（`● Active` / `○ Inactive`）、アクティブリリースバージョン、マニフェストチェックサム、CAS アーティファクト数を一覧表示。
+     - **🔍 サービス詳細インスペクト（Modal Dialog）**:
+       - 各サービス行の「🔍 詳細」ボタンをクリックすると、モーダルダイアログが即座にポップアップ。
+       - ターゲット環境（OS/Arch）、ロールバックポリシー、デプロイ対象バイナリ（パス・権限）、設定テンプレート（`validateCommand`）、CAS Blobs 一覧（相対パス・SHA-256・バイト数）、および Raw Manifest YAML をインプレースで確認できます。
+       - モーダル外側の背景クリック、または「✕ 閉じる」ボタンでスムーズに閉じられます。
+     - **リアルタイム稼働メトリクス**: メモリ使用量、Goroutine 数、総リリース数を 5 秒ポーリングで自動更新。
+     - **📥 バンドル手動インポート**: ドラッグ＆ドロップまたはファイル選択による `.tar.gz` アップロード。アップロード中はプログレスインジケータ（`⏳ 暗号検証および CAS 展開中...`）が表示され、展開完了時に詳細結果トーストがインプレース通知されます。
   2. **🛡️ 監査ログ & 改ざん検証 (`/ui/audit`)**:
-     - シーケンス番号、UTC タイムスタンプ、イベント種別（`release.import`, `agent.deploy.success`, `agent.rollback` 等）。
-     - `prev_record_hash` と `record_hash` の完全な連鎖表示。
-     - **「🔍 即時チェーン検証実行」ボタン**: クリックするとサーバー内で数学的チェーン検証が即時実行され、`✅ チェーン整合性確認済み` バッジが表示されます。
+     - **改ざん耐性ハッシュチェーン一覧**: シーケンス番号、UTC タイムスタンプ、イベント種別、対象エンティティ、実行者、`prev_record_hash` と `record_hash` の完全な連鎖表示。
+     - **🔎 リアルタイム検索 & イベント種別フィルタ**:
+       - イベント種別（`release.import`, `agent.deploy.success`, `agent.rollback`, `config.applied` 等）のセレクタ、およびエンティティ・ハッシュ・実行者のキーワード入力ボックスを完備。
+       - 入力後 300ms で HTMX が差分更新し、一致件数（`表示: X / Y 件`）をリアルタイムに表示。
+     - **🔍 即時チェーン検証実行**: クリックするとサーバー内で数学的チェーン検証が即時実行され、`✅ チェーン整合性確認済み` バッジが表示されます。
 
 ---
 
-## 5. CLI コマンドリファレンス
+## 5. 多種パッケージエコシステム対応 (APT, DNF, Pip, Docker)
+
+`ytagarasu` は、Linux ディストリビューション標準の OS パッケージから、Python アプリケーション、コンテナイメージに至るまで、同一のマニフェスト仕様でオフライン一括配布・適用可能です。
+
+### 1. APT (Debian / Ubuntu)
+```yaml
+packages:
+  system_apt:
+    manager: "apt"
+    items:
+      - name: "nginx"
+        version: "1.24.0"
+      - name: "libssl3"
+```
+- エージェントは非対話的（`DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends`）にインストールを実行します。
+
+### 2. DNF / RPM (RHEL / Rocky / CentOS)
+```yaml
+packages:
+  system_dnf:
+    manager: "dnf"
+    items:
+      - name: "sqlite-libs"
+        version: "3.34.0"
+      - name: "curl"
+```
+- エージェントは `dnf install -y --nogpgcheck` を用いてオフラインリポジトリから依存関係を導入します。
+
+### 3. Python Wheels (Pip)
+```yaml
+packages:
+  python_libs:
+    manager: "pip"
+    items:
+      - name: "fastapi"
+        version: "0.110.0"
+      - name: "uvicorn"
+```
+- インターネット側で `pip download -d wheels/ ...` によりホイールファイルを事前集約。
+- エージェント側では `python3 -m pip install --no-index --find-links <wheelsDir> ...` により完全オフラインで高速インストールされます。
+
+### 4. Docker コンテナイメージ (Container Tarballs)
+```yaml
+packages:
+  container_images:
+    manager: "docker"
+    items:
+      - name: "/var/ytagarasu/bundles/images/redis-7.tar"
+      - name: "/var/ytagarasu/bundles/images/app-core.tar"
+```
+- `docker save` により書き出された tar アーカイブを成果物として搬送。
+- エージェント側で `docker load -i <archive.tar>` によりローカル Docker デーモンへ展開されます。
+
+---
+
+## 6. 多層 E2E テスト & 週次スケジュールテスト運用
+
+本リポジトリでは、開発時の高速性と本番デプロイ時の堅牢性を両立するため、テストスイートを多層化しています。
+
+### テスト分類と実行コマンド
+
+| テスト分類 | 実行コマンド | 対象・目的 | 実行タイミング |
+| :--- | :--- | :--- | :--- |
+| **単体テスト & レース検証** | `make test` | ロジック層、DB接続プール、100% カバレッジ | PR 作成時・ローカル開発 |
+| **Agent-Server E2E & UI 視覚検証** | `make ytagarasu-e2e` | 実バイナリ通信、ロールバック、Headless Chrome UI 画像検証 | PR 作成時・マージ前 CI |
+| **全パッケージ種別網羅テスト** | `make matrix-test` | APT, DNF, Pip, Docker の全 4 種別のオフライン適用シミュレーション | 手動実行 / 週次スケジュール CI |
+
+### 週次スケジュールテスト (GitHub Actions)
+- **ワークフロー**: `.github/workflows/weekly-package-matrix.yml`
+- **トリガー**:
+  - 定期実行: 毎週日曜 00:00 UTC（日本時間 09:00）自動実行
+  - 手動実行: GitHub Actions タブの `Weekly Package Matrix Testing` から `Run workflow` をクリックして即時実行可能。
+
+---
+
+## 7. CLI コマンドリファレンス
 
 ### `ytagarasu`
 - `manifest init`: 対話型ウィザードによる `manifest.yaml` 作成
@@ -258,7 +341,7 @@ Node.js や npm、外部 CDN を一切使用しない組み込み HTMX ダッシ
 
 ---
 
-## 6. 設定ファイルリファレンス
+## 8. 設定ファイルリファレンス
 
 ### `manifest.yaml` 仕様
 
@@ -309,7 +392,7 @@ hostname: "node-01"                     # ホスト名識別子
 
 ---
 
-## 7. トラブルシューティング (FAQ)
+## 9. トラブルシューティング (FAQ)
 
 ### Q1. バンドルインポート時に `400 Bad Request` または `invalid signature` となる
 - **原因**: バンドル生成時に使用した秘密鍵と、検証用の公開鍵が一致していないか、搬送中にアーカイブが破損しています。
