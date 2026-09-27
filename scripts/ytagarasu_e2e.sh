@@ -72,6 +72,53 @@ for i in {1..30}; do
     fi
 done
 
+# Step 2.5: Reverse-engineering & Manifest Discovery Support (CLI)
+echo -e "\n${YELLOW}[Step 2.5/6] Testing Reverse-engineering & Manifest Discovery Support (survey/generate)...${NC}"
+MOCK_SYSROOT="$WORK_DIR/mock_sysroot"
+mkdir -p "$MOCK_SYSROOT/etc/systemd/system" "$MOCK_SYSROOT/usr/local/bin" "$MOCK_SYSROOT/etc/billing"
+
+echo '#!/bin/sh' > "$MOCK_SYSROOT/usr/local/bin/billing-worker"
+echo 'echo "worker active"' >> "$MOCK_SYSROOT/usr/local/bin/billing-worker"
+chmod +x "$MOCK_SYSROOT/usr/local/bin/billing-worker"
+
+cat <<EOF > "$MOCK_SYSROOT/etc/billing/worker.env"
+PORT=8080
+DB_PASSWORD=secret_value_123
+EOF
+
+cat <<EOF > "$MOCK_SYSROOT/etc/systemd/system/billing-worker.service"
+[Unit]
+Description=Billing Worker Service
+
+[Service]
+ExecStart=/usr/local/bin/billing-worker --port 8080
+EnvironmentFile=/etc/billing/worker.env
+Restart=always
+EOF
+
+DISCOVER_PLAN="$WORK_DIR/test-discovery-plan.yaml"
+DISCOVER_MANIFEST="$WORK_DIR/test-discovered-manifest.yaml"
+
+# Run survey
+"$WORK_DIR/ytagarasu" discover survey --sysroot "$MOCK_SYSROOT" -o "$DISCOVER_PLAN"
+if [ ! -f "$DISCOVER_PLAN" ]; then
+    echo -e "${RED}Discovery survey failed: $DISCOVER_PLAN not created!${NC}"
+    exit 1
+fi
+grep -q "billing-worker.service" "$DISCOVER_PLAN"
+echo -e "${GREEN}✓ CLI discover survey succeeded and generated discovery-plan.yaml.${NC}"
+
+# Run generate (Mode A with --ingest)
+"$WORK_DIR/ytagarasu" discover generate -p "$DISCOVER_PLAN" -o "$DISCOVER_MANIFEST" --sysroot "$MOCK_SYSROOT" --artifacts-dir "$WORK_DIR/discovered_artifacts" --configs-dir "$WORK_DIR/discovered_configs" --ingest
+if [ ! -f "$DISCOVER_MANIFEST" ]; then
+    echo -e "${RED}Discovery generate failed: $DISCOVER_MANIFEST not created!${NC}"
+    exit 1
+fi
+grep -q "billing-worker" "$DISCOVER_MANIFEST"
+# Verify SIRT secret sanitization
+grep -q "<REDACTED_SECRET>" "$WORK_DIR/discovered_configs/billing-worker-worker.env.tmpl"
+echo -e "${GREEN}✓ CLI discover generate succeeded with Mode A ingest and SIRT secret redaction.${NC}"
+
 # Step 3: Key Generation & Bundle Packaging
 echo -e "\n${YELLOW}[Step 3/6] Generating Ed25519 signing keys and building release bundle...${NC}"
 KEY_DIR="$WORK_DIR/keys"
@@ -194,7 +241,18 @@ echo -e "${GREEN}✓ In-place HTMX audit verification action confirmed.${NC}"
 "$WORK_DIR/ytagarasu" audit verify --server "http://127.0.0.1:${SERVER_PORT}"
 echo -e "${GREEN}✓ CLI audit verify succeeded with zero tampering.${NC}"
 
-# 5. Visual UI E2E & Snapshot generation
+# 5. Manifest Discovery UI check
+UI_DISCOVER=$(curl -s -f "http://127.0.0.1:${SERVER_PORT}/ui/discover")
+echo "$UI_DISCOVER" | grep -q "マニフェスト作成支援"
+echo "$UI_DISCOVER" | grep -q "Step 1: 安全な下見"
+echo -e "${GREEN}✓ Manifest Discovery UI rendered properly.${NC}"
+
+# 6. Manifest Discovery Survey Action check
+UI_SURVEY=$(curl -s -f -X POST "http://127.0.0.1:${SERVER_PORT}/ui/discover/survey" -d "service=")
+echo "$UI_SURVEY" | grep -q "Step 2: 検出された構成候補の取捨選択"
+echo -e "${GREEN}✓ Manifest Discovery Survey action verified.${NC}"
+
+# 7. Visual UI E2E & Snapshot generation
 if command -v python3 > /dev/null 2>&1; then
     echo -e "\n${YELLOW}Running visual UI verification and screenshot capture...${NC}"
     SERVER_URL="http://127.0.0.1:${SERVER_PORT}" python3 scripts/test_ytagarasu_ui.py

@@ -1,0 +1,94 @@
+<div class="card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.5rem; margin-bottom: 2rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+    <div>
+      <h2 style="font-size: 1.2rem; font-weight: 600; margin: 0 0 0.25rem 0; display: flex; align-items: center; gap: 0.5rem;">
+        <span>📋</span>
+        <span>Step 2: 検出された構成候補の取捨選択 (Review & Select)</span>
+      </h2>
+      <div style="font-size: 0.85rem; color: var(--text-secondary);">
+        移行したいサービスにチェックを入れ、バイナリの移行モード（実体吸い上げ / TODOヒント）を選択してください。
+      </div>
+    </div>
+    <span class="badge badge-info" style="font-size: 0.8rem;">
+      検出数: {{ len .Services }} 件
+    </span>
+  </div>
+
+  {{ if eq (len .Services) 0 }}
+    <div style="padding: 2rem; text-align: center; color: var(--text-muted); background: var(--bg-base); border-radius: var(--radius-sm);">
+      有効なアプリケーションサービスが検出されませんでした。（システム標準サービスは自動除外されています）
+    </div>
+  {{ else }}
+    <form hx-post="/ui/discover/generate" hx-target="#manifest-results" hx-swap="innerHTML">
+      <div class="table-container" style="margin-bottom: 1.5rem;">
+        <table class="custom-table">
+          <thead>
+            <tr>
+              <th style="width: 48px; text-align: center;">採択</th>
+              <th>サービス名</th>
+              <th>実行バイナリ / メタデータ</th>
+              <th>関連設定ファイル</th>
+              <th>バイナリ移行モード</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $idx, $svc := .Services }}
+            <tr>
+              <td style="text-align: center;">
+                <input type="checkbox" name="services" value="{{ $svc.Name }}" checked style="width: 18px; height: 18px; accent-color: var(--accent-primary); cursor: pointer;" />
+              </td>
+              <td>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ $svc.Name }}</div>
+                {{ if $svc.Description }}
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">{{ $svc.Description }}</div>
+                {{ end }}
+              </td>
+              <td>
+                <div class="mono" style="font-size: 0.85rem; color: var(--accent-primary);">{{ $svc.Binary }}</div>
+                {{ if $svc.BinaryInfo }}
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
+                    {{ $svc.BinaryInfo.Type }} / {{ $svc.BinaryInfo.Architecture }} ({{ $svc.BinaryInfo.Size }} bytes)
+                    <br/><span class="mono" title="{{ $svc.BinaryInfo.SHA256 }}">SHA: {{ slice $svc.BinaryInfo.SHA256 0 16 }}...</span>
+                  </div>
+                {{ end }}
+              </td>
+              <td>
+                {{ if eq (len $svc.Configs) 0 }}
+                  <span style="color: var(--text-muted); font-size: 0.8rem;">なし</span>
+                {{ else }}
+                  {{ range $svc.Configs }}
+                    <div class="mono" style="font-size: 0.8rem; background: var(--bg-surface-elevated); padding: 0.2rem 0.4rem; border-radius: 4px; margin-bottom: 0.2rem; display: inline-block;">
+                      📄 {{ . }}
+                    </div>
+                  {{ end }}
+                {{ end }}
+              </td>
+              <td>
+                <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem;">
+                  <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                    <input type="radio" name="mode_{{ $svc.Name }}" value="mode_b" checked style="accent-color: var(--accent-primary);" />
+                    <span><strong>Mode B</strong> (TODOヒント/GitOps)</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                    <input type="radio" name="mode_{{ $svc.Name }}" value="mode_a" style="accent-color: var(--accent-primary);" />
+                    <span><strong>Mode A</strong> (実体吸い上げ/レガシー)</span>
+                  </label>
+                </div>
+              </td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 1rem; align-items: center;">
+        <span style="font-size: 0.85rem; color: var(--text-secondary);">
+          チェックされたサービスのみを厳密なホワイトリストとしてマニフェスト化します
+        </span>
+        <button type="submit" class="btn" style="background: var(--success); color: #fff; padding: 0.75rem 1.75rem; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem;">
+          <span>✔ マニフェストを確定生成 (Generate)</span>
+        </button>
+      </div>
+    </form>
+  {{ end }}
+</div>

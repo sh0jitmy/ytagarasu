@@ -35,6 +35,7 @@ REPORT_DIR = "test_reports"
 DOCS_IMG_DIR = os.path.join("docs", "images")
 DASHBOARD_SCREENSHOT = os.path.join(DOCS_IMG_DIR, "ytagarasu_dashboard.png")
 AUDIT_SCREENSHOT = os.path.join(DOCS_IMG_DIR, "ytagarasu_audit.png")
+DISCOVER_SCREENSHOT = os.path.join(DOCS_IMG_DIR, "ytagarasu_discover.png")
 HTML_REPORT_PATH = os.path.join(REPORT_DIR, "ytagarasu_ui_e2e_report.html")
 
 
@@ -160,11 +161,23 @@ def main():
         log(f"✗ Audit realtime filter failed: {e}", "ERROR")
         test_results.append(("Audit Realtime Filter Component", "FAIL", str(e)))
 
-    # 4. Take Screenshots
+    # 6. Test Manifest Discovery UI
+    try:
+        discover_html = http_get(f"{SERVER_URL}/ui/discover")
+        assert "マニフェスト作成支援" in discover_html
+        assert "Step 1: 安全な下見" in discover_html
+        log("✓ Manifest Discovery UI loaded and validated.")
+        test_results.append(("Manifest Discovery Page Render", "PASS", "Discovery page displays 3-step KISS workflow stepper."))
+    except Exception as e:
+        log(f"✗ Manifest Discovery UI failed: {e}", "ERROR")
+        test_results.append(("Manifest Discovery Page Render", "FAIL", str(e)))
+
+    # 7. Take Screenshots
     dash_img_ok = take_screenshot(f"{SERVER_URL}/ui", DASHBOARD_SCREENSHOT)
     audit_img_ok = take_screenshot(f"{SERVER_URL}/ui/audit", AUDIT_SCREENSHOT)
+    discover_img_ok = take_screenshot(f"{SERVER_URL}/ui/discover", DISCOVER_SCREENSHOT)
 
-    # 5. Generate Standalone HTML Report
+    # 8. Generate Standalone HTML Report
     dash_b64 = ""
     if dash_img_ok and os.path.exists(DASHBOARD_SCREENSHOT):
         with open(DASHBOARD_SCREENSHOT, "rb") as f:
@@ -174,6 +187,11 @@ def main():
     if audit_img_ok and os.path.exists(AUDIT_SCREENSHOT):
         with open(AUDIT_SCREENSHOT, "rb") as f:
             audit_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    discover_b64 = ""
+    if discover_img_ok and os.path.exists(DISCOVER_SCREENSHOT):
+        with open(DISCOVER_SCREENSHOT, "rb") as f:
+            discover_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     all_pass = all(r[1] == "PASS" for r in test_results)
 
@@ -227,6 +245,14 @@ def main():
   <div class="card">
     <h3>Audit Log & Hash Chain Visual Snapshot</h3>
     <img src="data:image/png;base64,{audit_b64}" alt="Audit Log Screenshot" />
+  </div>
+"""
+
+    if discover_b64:
+        report_html += f"""
+  <div class="card">
+    <h3>Manifest Discovery Workflow Visual Snapshot</h3>
+    <img src="data:image/png;base64,{discover_b64}" alt="Manifest Discovery Screenshot" />
   </div>
 """
 

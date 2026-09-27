@@ -1,0 +1,45 @@
+<div class="card" style="background: var(--bg-surface); border: 1px solid rgba(34, 197, 94, 0.4); border-radius: var(--radius-md); padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 0 25px rgba(34, 197, 94, 0.1);">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+    <div>
+      <h2 style="font-size: 1.2rem; font-weight: 600; margin: 0 0 0.25rem 0; display: flex; align-items: center; gap: 0.5rem; color: var(--success);">
+        <span>🎉</span>
+        <span>Step 3: マニフェスト確定生成が完了しました！</span>
+      </h2>
+      <div style="font-size: 0.85rem; color: var(--text-secondary);">
+        ホワイトリストに基づき、安全にサニタイズされたデプロイ定義が作成されました。
+      </div>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+      <a href="/ui/discover/download" download="manifest.yaml" class="btn" style="background: var(--accent-primary); color: #fff; padding: 0.5rem 1.25rem; border-radius: var(--radius-sm); font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;">
+        <span>⬇ manifest.yaml をダウンロード</span>
+      </a>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+    <div style="background: var(--bg-base); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">採択アプリケーション</div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-primary); margin-top: 0.2rem;">{{ len .Manifest.Applications }} <span style="font-size: 0.85rem; font-weight: normal;">件</span></div>
+    </div>
+    <div style="background: var(--bg-base); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">設定ファイル (SIRTマスク済)</div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--purple); margin-top: 0.2rem;">{{ len .Manifest.Configs }} <span style="font-size: 0.85rem; font-weight: normal;">件</span></div>
+    </div>
+    <div style="background: var(--bg-base); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">管理サービス</div>
+      <div style="font-size: 1.5rem; font-weight: 700; color: var(--success); margin-top: 0.2rem;">{{ len .Manifest.Services }} <span style="font-size: 0.85rem; font-weight: normal;">件</span></div>
+    </div>
+  </div>
+
+  <div style="margin-bottom: 1.5rem;">
+    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">
+      📄 生成された manifest.yaml プレビュー
+    </div>
+    <pre class="mono" style="background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 1rem; overflow-x: auto; max-height: 400px; font-size: 0.85rem; line-height: 1.5; color: var(--text-primary); margin: 0;">{{ .ManifestYAML }}</pre>
+  </div>
+
+  <div style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: var(--radius-sm); padding: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+    <strong>👉 次のステップ:</strong><br/>
+    ダウンロードした <code class="mono">manifest.yaml</code> を配置し、CLI で <code class="mono">ytagarasu bundle export -m manifest.yaml</code> を実行することで、オフライン環境へ持ち込む署名付き配布バンドルを直ちに作成できます。
+  </div>
+</div>
