@@ -42,3 +42,4 @@ data/
 cmd/app/data/
 test_reports/
 coverage.out
+preparation-result.yaml

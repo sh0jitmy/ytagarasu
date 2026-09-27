@@ -35,7 +35,9 @@ import (
 
 type agentConfigFile struct {
 	ServerURL  string   `yaml:"server"`
+	ServerURL2 string   `yaml:"server_url"`
 	ServiceID  string   `yaml:"service"`
+	ServiceID2 string   `yaml:"service_id"`
 	Interval   string   `yaml:"interval"`
 	StateDir   string   `yaml:"state_dir"`
 	InstallDir string   `yaml:"install_dir"`
@@ -51,6 +53,7 @@ func main() {
 		stateDir     string
 		installDir   string
 		rolesStr     string
+		runOnce      bool
 		showVersion  bool
 	)
 
@@ -65,6 +68,7 @@ func main() {
 	flag.StringVar(&stateDir, "d", "", "Directory to store agent state (short)")
 	flag.StringVar(&installDir, "install-dir", "", "Root directory to install application binaries")
 	flag.StringVar(&rolesStr, "roles", "", "Comma-separated list of host roles (e.g. api,worker)")
+	flag.BoolVar(&runOnce, "once", false, "Execute a single deployment cycle and exit")
 	flag.BoolVar(&showVersion, "version", false, "Print version information and exit")
 	flag.BoolVar(&showVersion, "v", false, "Print version information and exit (short)")
 	flag.Parse()
@@ -90,11 +94,19 @@ func main() {
 		if err == nil {
 			var cf agentConfigFile
 			if err := yaml.Unmarshal(data, &cf); err == nil {
-				if serverURL == "" && cf.ServerURL != "" {
-					serverURL = cf.ServerURL
+				if serverURL == "" {
+					if cf.ServerURL != "" {
+						serverURL = cf.ServerURL
+					} else if cf.ServerURL2 != "" {
+						serverURL = cf.ServerURL2
+					}
 				}
-				if serviceID == "" && cf.ServiceID != "" {
-					serviceID = cf.ServiceID
+				if serviceID == "" {
+					if cf.ServiceID != "" {
+						serviceID = cf.ServiceID
+					} else if cf.ServiceID2 != "" {
+						serviceID = cf.ServiceID2
+					}
 				}
 				if pollInterval == 0 && cf.Interval != "" {
 					if d, parseErr := time.ParseDuration(cf.Interval); parseErr == nil {
@@ -181,6 +193,20 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if runOnce {
+		report, err := ag.StepOnce(ctx)
+		if err != nil {
+			slog.Error("single deployment step failed", "error", err)
+			os.Exit(1)
+		}
+		if report != nil && !report.Success {
+			slog.Error("deployment failed", "error", report.ErrorMessage)
+			os.Exit(1)
+		}
+		slog.Info("single deployment step completed successfully", "version", report.Version)
+		return
+	}
 
 	if err := ag.Run(ctx); err != nil && !strings.Contains(err.Error(), "context canceled") {
 		slog.Error("agent exited with error", "error", err)

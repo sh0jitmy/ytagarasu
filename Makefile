@@ -93,6 +93,10 @@ sqlite-e2e: build
 	@echo "==> Running Standalone SQLite E2E tests..."
 	@bash scripts/sqlite_e2e.sh
 
+ytagarasu-e2e: build
+	@echo "==> Running ytagarasu Multi-Tier Agent-Server & HTMX UI E2E tests..."
+	@bash scripts/ytagarasu_e2e.sh
+
 frontend-e2e: build
 	@echo "==> Running Standalone HTMX Frontend E2E tests..."
 	@bash scripts/frontend_e2e.sh
