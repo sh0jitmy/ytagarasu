@@ -97,6 +97,10 @@ ytagarasu-e2e: build
 	@echo "==> Running ytagarasu Multi-Tier Agent-Server & HTMX UI E2E tests..."
 	@bash scripts/ytagarasu_e2e.sh
 
+matrix-test: build
+	@echo "==> Running Full Package Matrix E2E tests (APT, DNF, Pip, Docker)..."
+	@bash scripts/run_package_matrix.sh
+
 frontend-e2e: build
 	@echo "==> Running Standalone HTMX Frontend E2E tests..."
 	@bash scripts/frontend_e2e.sh

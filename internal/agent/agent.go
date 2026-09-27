@@ -97,6 +97,11 @@ func NewAgent(cfg Config, pkgMgr PackageManager) *Agent {
 	}
 }
 
+// SetPackageManager updates the agent's package manager implementation.
+func (a *Agent) SetPackageManager(pkgMgr PackageManager) {
+	a.pkgMgr = pkgMgr
+}
+
 // StepOnce performs a single deployment check and application cycle.
 func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 	// 1. Acquire exclusive lock
@@ -185,12 +190,19 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 		"prev_release", state.CurrentReleaseID,
 	)
 
-	// 3. Apply OS Packages if specified and manager is configured
+	// 3. Apply OS & Application Packages if specified and manager is configured
 	if a.pkgMgr != nil {
 		for _, pkgTarget := range m.Packages {
 			if len(pkgTarget.Items) > 0 {
-				slog.Info("applying OS packages non-interactively", "manager", pkgTarget.Manager, "count", len(pkgTarget.Items))
-				if pkgErr := a.pkgMgr.InstallPackages(ctx, pkgTarget.Items); pkgErr != nil {
+				slog.Info("applying packages non-interactively", "manager", pkgTarget.Manager, "count", len(pkgTarget.Items))
+				var pkgErr error
+				if multiMgr, ok := a.pkgMgr.(*MultiPackageManager); ok && pkgTarget.Manager != "" {
+					pkgErr = multiMgr.InstallForManager(ctx, pkgTarget.Manager, pkgTarget.Items)
+				} else {
+					pkgErr = a.pkgMgr.InstallPackages(ctx, pkgTarget.Items)
+				}
+
+				if pkgErr != nil {
 					report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("package install failed: %v", pkgErr), startTime)
 					a.sendReport(ctx, report)
 					state.Status = "failed"
