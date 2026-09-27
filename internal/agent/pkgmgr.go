@@ -157,3 +157,168 @@ func (r *RpmPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 	}
 	return nil
 }
+
+// PipPackageManager manages offline Python packages via pre-downloaded wheels.
+type PipPackageManager struct {
+	runner    CommandRunner
+	pythonBin string
+	wheelsDir string
+}
+
+// NewPipPackageManager constructs a PipPackageManager.
+func NewPipPackageManager(runner CommandRunner, pythonBin, wheelsDir string) *PipPackageManager {
+	if runner == nil {
+		runner = &DefaultRunner{}
+	}
+	if pythonBin == "" {
+		pythonBin = "python3"
+	}
+	return &PipPackageManager{
+		runner:    runner,
+		pythonBin: pythonBin,
+		wheelsDir: wheelsDir,
+	}
+}
+
+// UpdateRepositories is a no-op for air-gapped pip.
+func (p *PipPackageManager) UpdateRepositories(ctx context.Context) error {
+	return nil
+}
+
+// InstallPackages runs `python3 -m pip install --no-index [--find-links <dir>] <packages...>`.
+func (p *PipPackageManager) InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error {
+	if len(pkgs) == 0 {
+		return nil
+	}
+
+	args := []string{"-m", "pip", "install", "--no-index"}
+	if p.wheelsDir != "" {
+		args = append(args, "--find-links", p.wheelsDir)
+	}
+
+	for _, pkg := range pkgs {
+		name := strings.TrimSpace(pkg.Name)
+		if name == "" {
+			continue
+		}
+		if pkg.Version != "" {
+			args = append(args, fmt.Sprintf("%s==%s", name, pkg.Version))
+		} else {
+			args = append(args, name)
+		}
+	}
+
+	out, err := p.runner.Run(ctx, nil, p.pythonBin, args...)
+	if err != nil {
+		return fmt.Errorf("pip install failed: %w (output: %s)", err, string(out))
+	}
+	return nil
+}
+
+// DockerPackageManager manages offline Docker container images loaded from archives.
+type DockerPackageManager struct {
+	runner CommandRunner
+}
+
+// NewDockerPackageManager constructs a DockerPackageManager.
+func NewDockerPackageManager(runner CommandRunner) *DockerPackageManager {
+	if runner == nil {
+		runner = &DefaultRunner{}
+	}
+	return &DockerPackageManager{runner: runner}
+}
+
+// UpdateRepositories is a no-op for offline Docker images.
+func (d *DockerPackageManager) UpdateRepositories(ctx context.Context) error {
+	return nil
+}
+
+// InstallPackages loads offline container archives via `docker load -i <path>`.
+func (d *DockerPackageManager) InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error {
+	if len(pkgs) == 0 {
+		return nil
+	}
+
+	for _, pkg := range pkgs {
+		archivePath := strings.TrimSpace(pkg.Name)
+		if archivePath == "" {
+			continue
+		}
+		out, err := d.runner.Run(ctx, nil, "docker", "load", "-i", archivePath)
+		if err != nil {
+			return fmt.Errorf("docker load failed for '%s': %w (output: %s)", archivePath, err, string(out))
+		}
+	}
+	return nil
+}
+
+// MultiPackageManager dispatches package installations to manager-specific implementations.
+type MultiPackageManager struct {
+	managers map[string]PackageManager
+	fallback PackageManager
+}
+
+// NewMultiPackageManager constructs a MultiPackageManager.
+func NewMultiPackageManager(fallback PackageManager) *MultiPackageManager {
+	return &MultiPackageManager{
+		managers: make(map[string]PackageManager),
+		fallback: fallback,
+	}
+}
+
+// Register registers a manager implementation for a given manager name (e.g. "apt", "dnf", "pip", "docker").
+func (m *MultiPackageManager) Register(name string, mgr PackageManager) {
+	m.managers[strings.ToLower(strings.TrimSpace(name))] = mgr
+}
+
+// UpdateRepositories updates all registered repositories.
+func (m *MultiPackageManager) UpdateRepositories(ctx context.Context) error {
+	for name, mgr := range m.managers {
+		if err := mgr.UpdateRepositories(ctx); err != nil {
+			return fmt.Errorf("update repositories failed for manager '%s': %w", name, err)
+		}
+	}
+	if m.fallback != nil {
+		return m.fallback.UpdateRepositories(ctx)
+	}
+	return nil
+}
+
+// InstallPackages delegates installation using the package item or fallback.
+func (m *MultiPackageManager) InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error {
+	if len(pkgs) == 0 {
+		return nil
+	}
+	if m.fallback != nil {
+		return m.fallback.InstallPackages(ctx, pkgs)
+	}
+	return nil
+}
+
+// InstallForManager installs packages specifically using the named manager.
+func (m *MultiPackageManager) InstallForManager(ctx context.Context, managerName string, pkgs []manifest.PackageItem) error {
+	mgr, ok := m.managers[strings.ToLower(strings.TrimSpace(managerName))]
+	if !ok {
+		if m.fallback != nil {
+			return m.fallback.InstallPackages(ctx, pkgs)
+		}
+		return fmt.Errorf("no package manager registered for '%s'", managerName)
+	}
+	return mgr.InstallPackages(ctx, pkgs)
+}
+
+// NewPackageManager returns a default PackageManager implementation for the given manager type.
+func NewPackageManager(managerType string, runner CommandRunner) PackageManager {
+	switch strings.ToLower(strings.TrimSpace(managerType)) {
+	case "apt", "debian", "ubuntu":
+		return NewAptPackageManager(runner)
+	case "dnf", "yum", "rpm", "rhel", "rocky", "centos":
+		return NewRpmPackageManager(runner)
+	case "pip", "python", "wheel":
+		return NewPipPackageManager(runner, "python3", "")
+	case "docker", "container", "oci":
+		return NewDockerPackageManager(runner)
+	default:
+		return NewAptPackageManager(runner)
+	}
+}
