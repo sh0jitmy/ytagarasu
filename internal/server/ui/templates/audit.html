@@ -1,0 +1,14 @@
+{{ define "title" }}監査ログ & 改ざん検証 | ytagarasu{{ end }}
+
+{{ define "content" }}
+<div style="margin-bottom: 2rem;">
+  <h1 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary);">
+    🛡️ 監査ログ & 改ざん耐性ハッシュチェーン
+  </h1>
+  <p style="color: var(--text-secondary); font-size: 0.95rem;">
+    オフラインサーバー上で発生したバンドルインポート、リリース切り替え、システム操作の全履歴を SHA-256 チェーンで暗号学的に追跡・検証します。
+  </p>
+</div>
+
+{{ template "components/audit_table.html" . }}
+{{ end }}

@@ -1,0 +1,78 @@
+{{ define "components/audit_table.html" }}
+<div id="audit-table-container">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <div>
+      <h3 style="font-size: 1.1rem; color: var(--text-primary);">改ざん耐性 SHA-256 監査チェーン</h3>
+      <p style="font-size: 0.85rem; color: var(--text-secondary);">各レコードは直前ブロックのハッシュと連鎖しており、改ざんや順序の変更が不可能です。</p>
+    </div>
+    <div style="display: flex; gap: 0.75rem; align-items: center;">
+      <span id="verify-badge">
+        {{ if .Verified }}
+          <span class="badge badge-success">✅ チェーン整合性確認済み ({{ .TotalCount }} レコード)</span>
+        {{ else if .VerifyError }}
+          <span class="badge badge-danger">❌ 改ざん検知: {{ .VerifyError }}</span>
+        {{ else }}
+          <span class="badge badge-info">未検証</span>
+        {{ end }}
+      </span>
+      <button class="btn btn-primary" hx-get="/ui/actions/verify-audit" hx-target="#verify-badge" hx-swap="outerHTML">
+        🔍 即時チェーン検証実行
+      </button>
+      <button class="btn btn-secondary" hx-get="/ui/components/audit-table" hx-target="#audit-table-container" hx-swap="outerHTML">
+        🔄 最新化
+      </button>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table class="custom-table">
+      <thead>
+        <tr>
+          <th>Seq</th>
+          <th>日時 (UTC)</th>
+          <th>イベント種別</th>
+          <th>対象 (Entity ID)</th>
+          <th>実行者</th>
+          <th>直前ハッシュ (prev_record_hash)</th>
+          <th>現在ハッシュ (record_hash)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ if .Records }}
+          {{ range .Records }}
+          <tr>
+            <td class="mono">#{{ .Sequence }}</td>
+            <td style="color: var(--text-secondary); font-size: 0.8rem;">{{ .Timestamp }}</td>
+            <td>
+              {{ if eq .EventType "release.import" }}
+                <span class="badge badge-success">{{ .EventType }}</span>
+              {{ else if eq .EventType "agent.deploy.success" }}
+                <span class="badge badge-info">{{ .EventType }}</span>
+              {{ else if eq .EventType "agent.rollback" }}
+                <span class="badge badge-danger">{{ .EventType }}</span>
+              {{ else }}
+                <span class="badge badge-warning">{{ .EventType }}</span>
+              {{ end }}
+            </td>
+            <td><strong style="color: var(--text-primary);">{{ .EntityID }}</strong></td>
+            <td style="color: var(--text-secondary);">{{ .Actor }}</td>
+            <td class="mono" style="color: var(--text-muted);" title="{{ .PrevRecordHash }}">
+              {{ printf "%.10s..." .PrevRecordHash }}
+            </td>
+            <td class="mono" style="color: var(--accent-primary);" title="{{ .RecordHash }}">
+              {{ printf "%.10s..." .RecordHash }}
+            </td>
+          </tr>
+          {{ end }}
+        {{ else }}
+          <tr>
+            <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+              監査ログレコードがありません。
+            </td>
+          </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{ end }}

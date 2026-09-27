@@ -1,0 +1,66 @@
+{{ define "title" }}ダッシュボード | ytagarasu{{ end }}
+
+{{ define "content" }}
+<div style="margin-bottom: 2rem;">
+  <h1 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary);">
+    オフライン配信ダッシュボード
+  </h1>
+  <p style="color: var(--text-secondary); font-size: 0.95rem;">
+    エアギャップ環境におけるサービスごとのアクティブリリース配信状況、CAS 管理状態、およびエージェント向け Desired State を一元管理します。
+  </p>
+</div>
+
+<!-- System Metrics -->
+{{ template "components/system_metrics.html" . }}
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+  <!-- Left Column: Services List -->
+  <div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary);">
+        📦 サービス配信状況
+      </h2>
+      <button class="btn btn-secondary" hx-get="/ui/components/services" hx-target="#services-table-container" hx-swap="outerHTML">
+        🔄 更新
+      </button>
+    </div>
+    {{ template "components/services.html" . }}
+  </div>
+
+  <!-- Right Column: Manual Bundle Ingestion & Quick Info -->
+  <div>
+    <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin-bottom: 1rem;">
+      📥 バンドル手動インポート
+    </h2>
+    <div class="upload-zone">
+      <form hx-post="/ui/actions/import-bundle" hx-encoding="multipart/form-data" hx-target="#import-result-container" hx-indicator="#upload-spinner">
+        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+          署名済みバンドルアーカイブ（<code>*.tar.gz</code>）を選択してオフラインサーバーの CAS へ直接インポートします。
+        </p>
+        <input type="file" name="bundle" accept=".tar.gz,.tgz" required style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.85rem;">
+        <div>
+          <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+            🚀 バンドルをインポート
+          </button>
+        </div>
+        <div id="upload-spinner" class="htmx-indicator" style="margin-top: 0.75rem; color: var(--accent-primary); font-size: 0.85rem;">
+          ⏳ 暗号検証および CAS 展開中...
+        </div>
+      </form>
+      <div id="import-result-container"></div>
+    </div>
+
+    <!-- Offline Security Info Card -->
+    <div style="margin-top: 1.5rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem;">
+      <h3 style="font-size: 0.95rem; font-weight: 600; color: var(--accent-primary); margin-bottom: 0.5rem;">
+        🛡️ オフラインセキュリティ保証
+      </h3>
+      <ul style="color: var(--text-secondary); font-size: 0.8rem; line-height: 1.6; padding-left: 1.2rem;">
+        <li>インポート時に Ed25519 署名と有効期限を事前検証</li>
+        <li>SHA-256 CAS による重複排除とハードリンク仮想リポジトリ</li>
+        <li>すべてのインポート操作は監査ハッシュチェーンへ自動記録</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{{ end }}

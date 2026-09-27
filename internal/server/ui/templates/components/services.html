@@ -1,0 +1,52 @@
+{{ define "components/services.html" }}
+<div id="services-table-container" class="table-container">
+  <table class="custom-table">
+    <thead>
+      <tr>
+        <th>サービスID</th>
+        <th>アクティブリリース</th>
+        <th>マニフェスト チェックサム</th>
+        <th>アーティファクト</th>
+        <th>最終更新日時</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ if .Services }}
+        {{ range .Services }}
+        <tr>
+          <td><strong style="color: var(--text-primary);">{{ .ServiceID }}</strong></td>
+          <td>
+            <span class="badge badge-info">{{ .ActiveRelease }}</span>
+          </td>
+          <td class="mono" style="color: var(--text-muted);">
+            {{ if .Checksum }}
+              <span title="{{ .Checksum }}">{{ printf "%.12s..." .Checksum }}</span>
+            {{ else }}
+              -
+            {{ end }}
+          </td>
+          <td>
+            <span class="badge badge-success">{{ .ArtifactCount }} blobs</span>
+          </td>
+          <td style="color: var(--text-secondary); font-size: 0.8rem;">
+            {{ .UpdatedAt }}
+          </td>
+          <td>
+            <a href="/api/v1/services/{{ .ServiceID }}/desired" target="_blank" class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
+              Desired YAML ↗
+            </a>
+          </td>
+        </tr>
+        {{ end }}
+      {{ else }}
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+            登録されているサービスはまだありません。バンドルをインポートしてください。
+          </td>
+        </tr>
+      {{ end }}
+    </tbody>
+  </table>
+</div>
+{{ end }}

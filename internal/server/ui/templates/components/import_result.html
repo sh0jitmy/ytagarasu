@@ -1,0 +1,19 @@
+{{ define "components/import_result.html" }}
+<div id="import-result" style="margin-top: 1rem;">
+  {{ if .Success }}
+    <div style="background: rgba(34, 197, 94, 0.15); border: 1px solid var(--success); border-radius: var(--radius-sm); padding: 1rem; color: var(--success); display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <strong>✅ バンドルインポート成功:</strong> {{ .Message }}
+      </div>
+      <button onclick="this.parentElement.remove()" style="background: none; border: none; color: var(--success); cursor: pointer; font-size: 1.1rem;">&times;</button>
+    </div>
+  {{ else if .Error }}
+    <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); border-radius: var(--radius-sm); padding: 1rem; color: var(--danger); display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <strong>❌ インポート失敗:</strong> {{ .Error }}
+      </div>
+      <button onclick="this.parentElement.remove()" style="background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1.1rem;">&times;</button>
+    </div>
+  {{ end }}
+</div>
+{{ end }}

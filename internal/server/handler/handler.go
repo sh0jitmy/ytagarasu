@@ -31,6 +31,7 @@ import (
 	"github.com/sh0jitmy/ytagarasu/internal/audit"
 	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
+	"github.com/sh0jitmy/ytagarasu/internal/server/ui"
 )
 
 // Server provides HTTP API routing and static repository hosting.
@@ -39,16 +40,19 @@ type Server struct {
 	imp            *importer.Importer
 	namespacesRoot string
 	mux            *http.ServeMux
+	ui             *ui.UI
 }
 
 // NewServer initializes a new Server and mounts all HTTP routes.
 func NewServer(db *store.DB, imp *importer.Importer, namespacesRoot string) *Server {
 	cleanNS := filepath.Clean(namespacesRoot)
+	webUI, _ := ui.NewUI(db, imp)
 	s := &Server{
 		db:             db,
 		imp:            imp,
 		namespacesRoot: cleanNS,
 		mux:            http.NewServeMux(),
+		ui:             webUI,
 	}
 	s.routes()
 	return s
@@ -63,6 +67,14 @@ func (s *Server) routes() {
 	// Health & System
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("GET /api/v1/system/healthz", s.handleHealthz)
+
+	// UI routes
+	if s.ui != nil {
+		s.ui.RegisterRoutes(s.mux)
+		s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/ui", http.StatusFound)
+		})
+	}
 
 	// Services & Desired Manifests
 	s.mux.HandleFunc("GET /api/v1/services", s.handleListServices)

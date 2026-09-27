@@ -1,0 +1,24 @@
+{{ define "components/system_metrics.html" }}
+<div class="metric-grid" id="system-metrics-container" hx-get="/ui/components/system-metrics" hx-trigger="every 5s" hx-swap="outerHTML">
+  <div class="metric-card">
+    <div class="metric-title">登録サービス数</div>
+    <div class="metric-value">{{ .TotalServices }}</div>
+    <div class="metric-sub">アクティブなオフライン配信</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-title">総リリース数</div>
+    <div class="metric-value">{{ .TotalReleases }}</div>
+    <div class="metric-sub">CAS 管理済みバージョン</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-title">監査ログレコード</div>
+    <div class="metric-value">{{ .TotalAuditRecords }}</div>
+    <div class="metric-sub">SHA-256 チェーン記録数</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-title">サーバー稼働状態</div>
+    <div class="metric-value" style="color: var(--success); font-size: 1.25rem;">● 正常稼働中</div>
+    <div class="metric-sub">Goroutines: {{ .Goroutines }} | メモリ: {{ .MemoryMB }} MB</div>
+  </div>
+</div>
+{{ end }}
