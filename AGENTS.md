@@ -28,6 +28,8 @@ This document provides behavioral constraints, architectural conventions, and ex
    - In Go unit/integration tests (`internal/...`), isolate SQLite memory databases using distinct connection names (`fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())`) to ensure parallel safety.
 5. **Requirements Compliance**:
    - After updating features or configurations, execute `make self-eval` and ensure 100% compliance in `REQUIREMENTS.md`.
+6. **Documentation Sync Governance**:
+   - Whenever adding or updating features, CLI subcommands, Web UI (pages/tabs/buttons), or reports, **always update [README.md](file://README.md) and [docs/manual.md](file://docs/manual.md) within the same commit/PR** according to `documentation-governance`. Never defer documentation sync. Ensure zero 404 links in GitHub Pages.
 
 ---
 

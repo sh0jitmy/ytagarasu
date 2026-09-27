@@ -57,16 +57,32 @@
 
 ### Step 0: 既存サーバーからのマニフェスト作成支援（リバースエンジニアリング）
 
-稼働中の既存サーバーから構成を吸い上げて `manifest.yaml` を自動作成したい場合、**KISS原則に基づく 2 段階のホワイトリスト作成支援** を利用します。
+稼働中の既存サーバーから構成を吸い上げて `manifest.yaml` を自動作成したい場合、**KISS原則に基づく 2 段階のホワイトリスト作成支援** を利用します。CLI および Web UI の両方に対応しています。
 
+#### 🖥️ Web UI からの操作 (`http://<server-ip>:8080/ui/discover`)
+ブラウザから直感的に下見・取捨選択・確定ダウンロードが行えます：
+1. **Step 1: 安全な下見（Survey）**:
+   - 上部ナビゲーションの「🔍 マニフェスト作成支援」タブを開き、対象サービス絞り込み（任意）を入力して「サーバー構成を安全にスキャン」をクリックします（サーバー変更ゼロの Read-Only 実行）。
+2. **Step 2: 検出された構成候補の取捨選択（Review & Select）**:
+   - 検出されたサービス一覧から移行対象にチェックを入れます。
+   - **バイナリ移行モード**を選択：
+     - **Mode A (実体吸い上げ / Ingest)**: 既存サーバー上のバイナリや設定ファイルを自動取得して即座にバンドル化。
+     - **Mode B (TODOヒント)**: ソースコードやCIリポジトリの配置を促すヒント行（`# TODO: <url>`）を出力。
+3. **Step 3: マニフェスト確定（Generate & Download）**:
+   - 「マニフェスト確定生成」をクリックすると、SIRT 安全弁によりクレデンシャル（パスワード・秘密鍵等）が自動的に `<REDACTED_SECRET>` に置換された `manifest.yaml` がプレビュー表示されます。
+   - 「⬇ manifest.yaml をダウンロード」をクリックして保存します。
+
+![マニフェスト作成支援 UI](images/ytagarasu_discover.png)
+
+#### 💻 CLI からの操作
 ```bash
 # 1. サーバーの稼働状態を下見し、構成候補カタログを出力 (Read-Only)
-ytagarasu discover survey
+ytagarasu discover survey -o discovery-plan.yaml
 
-# 2. 生成された 'discovery-plan.yaml' をエディタで開き、不要な行を削除 / コメントアウト
+# 2. 生成された 'discovery-plan.yaml' をエディタで開き、不要な行を削除 / コメントアウト (KISSホワイトリスト)
 
-# 3. 確定したホワイトリストから manifest.yaml を生成
-ytagarasu discover generate -p discovery-plan.yaml -o manifest.yaml
+# 3. 確定したホワイトリストから manifest.yaml を生成 (実体吸い上げを行う場合は --ingest を付与)
+ytagarasu discover generate -p discovery-plan.yaml -o manifest.yaml --ingest
 ```
 - 詳細な設計思想や背景は [docs/manifest_discovery_journey_and_design_rationale.md](file:///Users/shjtmy/gravity/ytagarasu/docs/manifest_discovery_journey_and_design_rationale.md) および [docs/manifest_creation_support_prd_and_usecases.md](file:///Users/shjtmy/gravity/ytagarasu/docs/manifest_creation_support_prd_and_usecases.md) を参照してください。
 
@@ -328,11 +344,13 @@ packages:
 
 ### 📸 Headless Chrome UI スナップショット & GitHub Pages E2E レポート
 - **公開 URL**:
-  - E2E 総合テストレポート: `https://sh0jitmy.github.io/ytagarasu/`
-  - パッケージマトリクス詳細レポート: `https://sh0jitmy.github.io/ytagarasu/matrix_test_report.html`
+  - 🏠 **E2E 総合テストポータル**: `https://sh0jitmy.github.io/ytagarasu/`
+  - 🔍 **ytagarasu UI & マニフェスト作成支援 E2E レポート**: `https://sh0jitmy.github.io/ytagarasu/ytagarasu_ui_e2e_report.html`
+  - 📦 **パッケージマトリクス詳細レポート**: `https://sh0jitmy.github.io/ytagarasu/matrix_test_report.html`
+  - 🖥️ **スタンドアロン HTMX Frontend E2E レポート**: `https://sh0jitmy.github.io/ytagarasu/frontend_e2e_report.html`
 - **CI 自動生成**:
-  - `make ytagarasu-e2e` および `make frontend-e2e` 実行時に、Headless Chrome を用いてダッシュボード（`docs/images/ytagarasu_dashboard.png`）および監査ログ（`docs/images/ytagarasu_audit.png`）の高解像度スナップショットを自動撮影します。
-  - `make matrix-test` 実行時に、`scripts/generate_matrix_report.py` によりダークモード対応のスタンドアロン HTML レポート（`test_reports/matrix_test_report.html`）を自動生成し、GitHub Pages へ自動デプロイします。
+  - `make ytagarasu-e2e` および `make frontend-e2e` 実行時に、Headless Chrome を用いてダッシュボード（`docs/images/ytagarasu_dashboard.png`）、監査ログ（`docs/images/ytagarasu_audit.png`）、およびマニフェスト作成支援画面（`docs/images/ytagarasu_discover.png`）の高解像度スナップショットを自動撮影します。
+  - `scripts/generate_matrix_report.py` および `scripts/generate_e2e_portal.py` により、ダークモード・ガラスモフィズム対応のスタンドアロン HTML レポート群と総合ポータルを自動生成し、GitHub Pages へ自動デプロイします。
 - **日本語 CJK フォント完全対応 (豆腐・文字化けゼロガバナンス)**:
   - CI ランナー（Ubuntu）において `fonts-noto-cjk`, `fonts-ipafont-gothic`, `fonts-vlgothic` を自動インストール。
   - Chrome 起動オプションに `--lang=ja-JP`, `--force-color-profile=srgb`, `--font-render-hinting=none`, `--virtual-time-budget=2000` を適用。
