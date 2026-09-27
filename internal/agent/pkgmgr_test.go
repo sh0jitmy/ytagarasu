@@ -212,7 +212,41 @@ func TestMultiPackageManagerAndFactory(t *testing.T) {
 	assert.NotNil(t, agent.NewPackageManager("dnf", runner))
 	assert.NotNil(t, agent.NewPackageManager("pip", runner))
 	assert.NotNil(t, agent.NewPackageManager("docker", runner))
+	assert.NotNil(t, agent.NewPackageManager("dewy", runner))
 	assert.NotNil(t, agent.NewPackageManager("custom", runner))
+}
+
+func TestDewyPackageManager(t *testing.T) {
+	t.Parallel()
+
+	t.Run("InstallPackages with artifact and version", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewDewyPackageManager(runner, "dewy", "/etc/dewy/dewy.env")
+
+		err := mgr.InstallPackages(context.Background(), []manifest.PackageItem{
+			{Name: "billing-svc", Version: "v1.1.0"},
+		})
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "dewy", runner.calls[0].name)
+		assert.Equal(t, []string{"pull", "--config", "/etc/dewy/dewy.env", "--artifact", "billing-svc", "--version", "v1.1.0"}, runner.calls[0].args)
+
+		// Test UpdateRepositories is no-op
+		require.NoError(t, mgr.UpdateRepositories(context.Background()))
+	})
+
+	t.Run("InstallPackages failure", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{err: errors.New("dewy pull connection refused")}
+		mgr := agent.NewDewyPackageManager(runner, "", "")
+
+		err := mgr.InstallPackages(context.Background(), []manifest.PackageItem{
+			{Name: "billing-svc"},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "dewy pull failed")
+	})
 }
 
 func TestEmptyPackages(t *testing.T) {
@@ -233,6 +267,9 @@ func TestEmptyPackages(t *testing.T) {
 	doc := agent.NewDockerPackageManager(runner)
 	require.NoError(t, doc.InstallPackages(ctx, nil))
 	require.NoError(t, doc.InstallPackages(ctx, []manifest.PackageItem{{Name: ""}}))
+
+	dewy := agent.NewDewyPackageManager(runner, "", "")
+	require.NoError(t, dewy.InstallPackages(ctx, nil))
 
 	multi := agent.NewMultiPackageManager(nil)
 	require.NoError(t, multi.InstallPackages(ctx, nil))

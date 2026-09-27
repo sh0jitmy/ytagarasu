@@ -23,22 +23,30 @@ cd "${ROOT_DIR}"
 echo "================================================================"
 echo "   ytagarasu Full Package Matrix Verification Suite             "
 echo "   Ecosystems: APT (Debian/Ubuntu), DNF (RHEL/Rocky),           "
-echo "               Pip (Python Wheels), Docker (Container Tarballs) "
+echo "               Pip (Python Wheels), Docker (Container Tarballs), "
+echo "               Dewy (Pull-based Binary Deployments)            "
 echo "================================================================"
 
-echo ""
-echo "==> [1/3] Running Package Manager Unit Tests..."
-go test -v -race ./internal/agent -run 'Test(Apt|Rpm|Pip|Docker|Multi)PackageManager'
-echo "✓ Unit tests passed for all package managers."
+mkdir -p test_reports
 
 echo ""
-echo "==> [2/3] Running Full-Matrix Offline Deployment E2E Tests (-tags=matrix_test)..."
-go test -tags=matrix_test -v -race ./test/e2e/... -run TestPackageMatrix_AllEcosystems
+echo "==> [1/4] Running Package Manager Unit Tests..."
+go test -v -race ./internal/agent -run 'Test(Apt|Rpm|Pip|Docker|Dewy|Multi)PackageManager'
+echo "✓ Unit tests passed for all package managers (including Dewy)."
+
+echo ""
+echo "==> [2/4] Running Full-Matrix Offline Deployment E2E Tests (-tags=matrix_test)..."
+go test -tags=matrix_test -v -race ./test/e2e/... -run 'TestPackageMatrix_' 2>&1 | tee test_reports/matrix_test.log
 echo "✓ Full matrix E2E tests passed."
 
 echo ""
-echo "==> [3/3] Checking Tooling Availability on Host..."
-for tool in apt-get dnf python3 docker; do
+echo "==> [3/4] Generating Standalone Package Matrix HTML Report..."
+python3 scripts/generate_matrix_report.py
+echo "✓ Package matrix HTML report generated at test_reports/matrix_test_report.html"
+
+echo ""
+echo "==> [4/4] Checking Tooling Availability on Host..."
+for tool in apt-get dnf python3 docker dewy; do
   if command -v "${tool}" >/dev/null 2>&1; then
     echo "  [FOUND]     ${tool}: $(command -v "${tool}")"
   else
@@ -50,3 +58,4 @@ echo ""
 echo "================================================================"
 echo "   ✓ All Package Matrix E2E Tests Completed Successfully!       "
 echo "================================================================"
+

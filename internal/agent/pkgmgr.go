@@ -252,6 +252,59 @@ func (d *DockerPackageManager) InstallPackages(ctx context.Context, pkgs []manif
 	return nil
 }
 
+// DewyPackageManager manages pull-based binary releases using Dewy.
+type DewyPackageManager struct {
+	runner     CommandRunner
+	dewyBin    string
+	configPath string
+}
+
+// NewDewyPackageManager constructs a DewyPackageManager.
+func NewDewyPackageManager(runner CommandRunner, dewyBin string, configPath string) *DewyPackageManager {
+	if runner == nil {
+		runner = &DefaultRunner{}
+	}
+	if dewyBin == "" {
+		dewyBin = "dewy"
+	}
+	return &DewyPackageManager{
+		runner:     runner,
+		dewyBin:    dewyBin,
+		configPath: configPath,
+	}
+}
+
+// UpdateRepositories is a no-op for Dewy pull manager.
+func (d *DewyPackageManager) UpdateRepositories(ctx context.Context) error {
+	return nil
+}
+
+// InstallPackages executes pull-based deployment via `dewy pull`.
+func (d *DewyPackageManager) InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error {
+	if len(pkgs) == 0 {
+		return nil
+	}
+
+	for _, pkg := range pkgs {
+		args := []string{"pull"}
+		if d.configPath != "" {
+			args = append(args, "--config", d.configPath)
+		}
+		if pkg.Name != "" {
+			args = append(args, "--artifact", pkg.Name)
+		}
+		if pkg.Version != "" {
+			args = append(args, "--version", pkg.Version)
+		}
+
+		out, err := d.runner.Run(ctx, nil, d.dewyBin, args...)
+		if err != nil {
+			return fmt.Errorf("dewy pull failed for '%s': %w (output: %s)", pkg.Name, err, string(out))
+		}
+	}
+	return nil
+}
+
 // MultiPackageManager dispatches package installations to manager-specific implementations.
 type MultiPackageManager struct {
 	managers map[string]PackageManager
@@ -266,7 +319,7 @@ func NewMultiPackageManager(fallback PackageManager) *MultiPackageManager {
 	}
 }
 
-// Register registers a manager implementation for a given manager name (e.g. "apt", "dnf", "pip", "docker").
+// Register registers a manager implementation for a given manager name (e.g. "apt", "dnf", "pip", "docker", "dewy").
 func (m *MultiPackageManager) Register(name string, mgr PackageManager) {
 	m.managers[strings.ToLower(strings.TrimSpace(name))] = mgr
 }
@@ -318,6 +371,8 @@ func NewPackageManager(managerType string, runner CommandRunner) PackageManager 
 		return NewPipPackageManager(runner, "python3", "")
 	case "docker", "container", "oci":
 		return NewDockerPackageManager(runner)
+	case "dewy", "s3", "pull":
+		return NewDewyPackageManager(runner, "dewy", "")
 	default:
 		return NewAptPackageManager(runner)
 	}
