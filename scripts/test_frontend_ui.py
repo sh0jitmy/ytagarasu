@@ -48,7 +48,7 @@ CHROME_BIN = find_chrome_binary()
 
 
 def log(msg, level="INFO"):
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{level}] {msg}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{level}] {msg}", flush=True)
 
 
 def http_get(url):
@@ -171,6 +171,8 @@ def capture_screenshots():
         "--headless=new",
         "--disable-gpu",
         "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--log-level=3",
         "--hide-scrollbars",
         "--lang=ja-JP",
         "--force-color-profile=srgb",
@@ -182,8 +184,12 @@ def capture_screenshots():
         f"{WEB_URL}/"
     ]
     try:
-        subprocess.run(cmd, check=True, timeout=15)
-        log(f"📸 Screenshot saved: {DASHBOARD_SCREENSHOT_PATH} ({os.path.getsize(DASHBOARD_SCREENSHOT_PATH)} bytes)")
+        res = subprocess.run(cmd, capture_output=True, timeout=15, check=False)
+        if res.returncode == 0 and os.path.exists(DASHBOARD_SCREENSHOT_PATH):
+            log(f"📸 Screenshot saved: {DASHBOARD_SCREENSHOT_PATH} ({os.path.getsize(DASHBOARD_SCREENSHOT_PATH)} bytes)")
+        else:
+            stderr_msg = res.stderr.decode("utf-8", errors="ignore").strip()
+            log(f"Headless Chrome screenshot warning/failure (code {res.returncode}): {stderr_msg}", "WARN")
     except Exception as e:
         log(f"Failed to capture screenshot: {e}", "WARN")
 
