@@ -50,9 +50,9 @@
 
 ## ✨ 主要機能
 
-1. **📦 再帰的パッケージ依存解決 & バンドル化**:
-   - APT (`dpkg`, `apt-get`) および RPM/DNF の推移的依存パッケージをインターネット側で再帰的に解決・一括ダウンロード。
-   - アプリケーションバイナリ、設定テンプレート、静的アセットを単一の暗号化アーカイブ (`.tar.gz`) へ集約。
+1. **📦 多種パッケージエコシステム対応 & 再帰的依存解決**:
+   - APT (`dpkg`, `apt-get`)、RPM/DNF、Python Wheels（Pip `--no-index`）、Docker コンテナイメージ（`docker load`）を単一マニフェストで統括。
+   - インターネット側で推移的依存関係を事前解決・一括アーカイブし、完全閉域でのオフライン導入を実現。
 2. **🛡️ 暗号学的完全性 & 有効期限検証**:
    - Ed25519 によるデジタル署名と公開鍵検証。改ざんされたバンドルはインポート段階で即座に遮断。
    - マニフェスト内の有効期限（`ExpiresAt`）チェックによる誤搬送・リプレイアタックの防止。
@@ -66,9 +66,11 @@
    - Go `text/template` による環境変数・ポート等の動的展開。
    - 反映前の構文検証 (`validateCommand`)、一時ファイル書き出し後の `renameat` アトミックリプレイス。
    - ヘルスチェック失敗時の即座スナップショット復元（ゼロ人手介入）。
-6. **📊 組み込み HTMX ダッシュボード (Node.js/npm 完全不要)**:
+6. **📊 組み込み HTMX ダッシュボード & サービスインスペクト (Node.js/npm 完全不要)**:
    - `//go:embed` によりアセット（HTMX、CSS）を Go 単一バイナリに内包。外部 CDN 接続ゼロ。
    - サービス一覧、Desired State、稼働メトリクス、監査ログ、バンドル手動インポートを Web ブラウザから確認可能。
+   - **詳細インスペクトモーダル**: サービスごとのマニフェスト構成、バイナリ権限、`validateCommand`、CAS Blobs 一覧をインプレース展開。
+   - **リアルタイム監査検索**: イベント種別やキーワードによる 300ms デバウンスリアルタイムフィルタリング。
 7. **🤖 初期ブートストラップ Ansible Role**:
    - `roles/deploy_agent/` により、ベアメタルや仮想マシンへの `ytagarasu-agent` のバイナリ配置、設定展開、systemd ユニット登録を自動化。
 
@@ -141,18 +143,22 @@ curl -X POST http://localhost:8080/api/v1/bundles/import \
 
 ## 🧪 多層 E2E テストフレームワーク
 
-本リポジトリは、閉域環境における極めて高い信頼性を担保するため、4層の E2E テストスイートを完備しています：
+本リポジトリは、閉域環境における極めて高い信頼性を担保するため、多層 E2E テストスイートを完備しています：
 
-| レイヤー | コマンド | 検証内容 |
-| :--- | :--- | :--- |
-| **Layer 1** | `make test` | 単体・結合テスト（`-race`、メモリDB分離、カバレッジ 100%） |
-| **Layer 2** | `make sqlite-e2e` | No-Docker スタンドアロン SQLite ガバナンス・バックアップ検証 |
-| **Layer 3** | `make ytagarasu-e2e` | **Agent-Server 実機デプロイ動作 & HTMX UI 一括 E2E 検証** |
-| **Layer 4** | `make frontend-e2e` | Headless Chrome による自動スナップショット撮影 & HTML レポート |
+| レイヤー | コマンド | 検証内容 | 実行タイミング |
+| :--- | :--- | :--- | :--- |
+| **Layer 1** | `make test` | 単体・結合テスト（`-race`、メモリDB分離、カバレッジ 100%） | PR / ローカル開発 |
+| **Layer 2** | `make sqlite-e2e` | No-Docker スタンドアロン SQLite ガバナンス・バックアップ検証 | PR CI / ローカル検証 |
+| **Layer 3** | `make ytagarasu-e2e` | **Agent-Server 実機デプロイ動作 & HTMX UI 一括 E2E 検証** | PR CI / マージ前検証 |
+| **Layer 4** | `make frontend-e2e` | Headless Chrome による自動スナップショット撮影 & HTML レポート | PR CI / 視覚監査 |
+| **Layer 5** | `make matrix-test` | **全パッケージ種別網羅（APT, DNF, Pip, Docker）E2E 検証** | 手動実行 / 週次定期 CI |
 
 ```bash
 # Agent-Server 実機動作および HTMX UI の完全な E2E テストを実行
 make ytagarasu-e2e
+
+# 全パッケージエコシステム（APT, DNF, Pip, Docker）のマトリクステストを手動実行
+make matrix-test
 ```
 
 ---
