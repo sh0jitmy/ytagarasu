@@ -120,8 +120,8 @@ echo -e "\n${YELLOW}[Step 5/5] Running Headless Chrome E2E Verification & Snapsh
 WEB_URL="http://127.0.0.1:${WEB_PORT}" CORE_URL="http://127.0.0.1:${SERVER_PORT}" \
     python3 scripts/test_frontend_ui.py
 
-if [ -f "$REPORT_DIR/frontend_e2e_report.html" ] && [ ! -f "$REPORT_DIR/index.html" ]; then
-    cp "$REPORT_DIR/frontend_e2e_report.html" "$REPORT_DIR/index.html"
+if [ -f "$REPORT_DIR/frontend_e2e_report.html" ]; then
+    cp -f "$REPORT_DIR/frontend_e2e_report.html" "$REPORT_DIR/index.html"
 fi
 
 echo -e "\n${GREEN}========================================================================${NC}"
