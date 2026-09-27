@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
@@ -376,4 +377,84 @@ func NewPackageManager(managerType string, runner CommandRunner) PackageManager 
 	default:
 		return NewAptPackageManager(runner)
 	}
+}
+
+// OrderedPackageTarget holds a package target key and its configuration, ordered by execution dependency.
+type OrderedPackageTarget struct {
+	Key    string
+	Target manifest.PackageTarget
+}
+
+// defaultManagerPriority returns the execution tier of a manager if no explicit order is specified.
+// OS-level packages (APT, DNF, RPM) must be applied first so that downstream tools
+// (Python wheels, Docker engines, Dewy binaries) find their OS prerequisites.
+func defaultManagerPriority(mgr string) int {
+	switch strings.ToLower(strings.TrimSpace(mgr)) {
+	case "apt", "debian", "ubuntu", "dnf", "yum", "rpm", "rhel", "rocky", "centos":
+		return 10
+	case "pip", "python", "wheel":
+		return 20
+	case "docker", "container", "oci":
+		return 30
+	case "dewy", "s3", "pull":
+		return 40
+	default:
+		return 50
+	}
+}
+
+// SortPackageTargets returns package targets sorted deterministically according to:
+// 1. Explicit DependsOn dependencies (dependent package targets executed after their dependencies)
+// 2. Explicit Order priority (lower positive integer executed first)
+// 3. Default manager tier priority (OS packages first: APT/DNF -> Pip -> Docker -> Dewy)
+// 4. Lexicographical key sorting for reproducibility
+func SortPackageTargets(pkgs map[string]manifest.PackageTarget) []OrderedPackageTarget {
+	if len(pkgs) == 0 {
+		return nil
+	}
+
+	result := make([]OrderedPackageTarget, 0, len(pkgs))
+	for k, v := range pkgs {
+		result = append(result, OrderedPackageTarget{Key: k, Target: v})
+	}
+
+	sort.SliceStable(result, func(i, j int) bool {
+		ti, tj := result[i].Target, result[j].Target
+
+		// 1. Check if j depends on i (i must precede j)
+		for _, dep := range tj.DependsOn {
+			if dep == result[i].Key || dep == ti.Manager {
+				return true
+			}
+		}
+		// Check if i depends on j (j must precede i)
+		for _, dep := range ti.DependsOn {
+			if dep == result[j].Key || dep == tj.Manager {
+				return false
+			}
+		}
+
+		// 2. Explicit Order priority
+		if ti.Order > 0 && tj.Order > 0 && ti.Order != tj.Order {
+			return ti.Order < tj.Order
+		}
+		if ti.Order > 0 && tj.Order == 0 {
+			return true
+		}
+		if ti.Order == 0 && tj.Order > 0 {
+			return false
+		}
+
+		// 3. Default tier priority by package manager type
+		pi := defaultManagerPriority(ti.Manager)
+		pj := defaultManagerPriority(tj.Manager)
+		if pi != pj {
+			return pi < pj
+		}
+
+		// 4. Stable tie-breaker by key
+		return result[i].Key < result[j].Key
+	})
+
+	return result
 }

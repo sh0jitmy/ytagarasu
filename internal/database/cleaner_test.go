@@ -18,6 +18,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,7 +29,8 @@ func TestPurgeExpiredRecords(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	client, err := NewClient(ctx, "sqlite3", "file:purge_test?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(1)", t.Name())
+	client, err := NewClient(ctx, "sqlite3", dsn)
 	require.NoError(t, err)
 	defer func() { _ = client.Close() }()
 
