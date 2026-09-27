@@ -3,6 +3,7 @@
   <table class="custom-table">
     <thead>
       <tr>
+        <th>ステータス</th>
         <th>サービスID</th>
         <th>アクティブリリース</th>
         <th>マニフェスト チェックサム</th>
@@ -15,9 +16,20 @@
       {{ if .Services }}
         {{ range .Services }}
         <tr>
+          <td>
+            {{ if eq .Status "active" }}
+              <span class="badge badge-success" title="アクティブリリース配信中">● Active</span>
+            {{ else }}
+              <span class="badge badge-warning" title="リリース未登録">○ Inactive</span>
+            {{ end }}
+          </td>
           <td><strong style="color: var(--text-primary);">{{ .ServiceID }}</strong></td>
           <td>
-            <span class="badge badge-info">{{ .ActiveRelease }}</span>
+            {{ if .ActiveRelease }}
+              <span class="badge badge-info">{{ .ActiveRelease }}</span>
+            {{ else }}
+              <span style="color: var(--text-muted); font-size: 0.8rem;">未設定</span>
+            {{ end }}
           </td>
           <td class="mono" style="color: var(--text-muted);">
             {{ if .Checksum }}
@@ -33,15 +45,23 @@
             {{ .UpdatedAt }}
           </td>
           <td>
-            <a href="/api/v1/services/{{ .ServiceID }}/desired" target="_blank" class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
-              Desired YAML ↗
-            </a>
+            <div style="display: flex; gap: 0.35rem; align-items: center;">
+              <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;"
+                      hx-get="/ui/components/service-detail?service_id={{ .ServiceID }}"
+                      hx-target="#modal-container"
+                      hx-swap="innerHTML">
+                🔍 詳細
+              </button>
+              <a href="/api/v1/services/{{ .ServiceID }}/desired" target="_blank" class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" title="Desired State YAML">
+                YAML ↗
+              </a>
+            </div>
           </td>
         </tr>
         {{ end }}
       {{ else }}
         <tr>
-          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
             登録されているサービスはまだありません。バンドルをインポートしてください。
           </td>
         </tr>

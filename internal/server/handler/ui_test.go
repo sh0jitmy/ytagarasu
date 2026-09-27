@@ -121,6 +121,24 @@ func TestUIEndpoints(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			containsBody:   "チェーン整合性確認済み",
 		},
+		{
+			name:           "Component Service Detail empty",
+			path:           "/ui/components/service-detail?service_id=none",
+			expectedStatus: http.StatusOK,
+			containsBody:   "アクティブリリース詳細インスペクト",
+		},
+		{
+			name:           "Component Audit Table Filtered match",
+			path:           "/ui/components/audit-table?event_type=system.init&q=server",
+			expectedStatus: http.StatusOK,
+			containsBody:   "system.init",
+		},
+		{
+			name:           "Component Audit Table Filtered no match",
+			path:           "/ui/components/audit-table?event_type=nonexistent",
+			expectedStatus: http.StatusOK,
+			containsBody:   "一致する監査ログレコードがありません",
+		},
 	}
 
 	for _, tc := range tests {
