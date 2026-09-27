@@ -25,6 +25,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -208,4 +209,69 @@ rollback:
 	emptyFilterBody, err := io.ReadAll(emptyFilterResp.Body)
 	require.NoError(t, err)
 	assert.Contains(t, string(emptyFilterBody), "一致する監査ログレコードがありません")
+}
+
+func TestUI_E2E_ManifestDiscoveryWorkflow(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	serverDataDir := filepath.Join(workDir, "server_data")
+	nsDir := filepath.Join(serverDataDir, "namespaces")
+	require.NoError(t, os.MkdirAll(nsDir, 0750))
+
+	dbDSN := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := store.NewDB(dbDSN)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	cas, err := store.NewCAS(filepath.Join(serverDataDir, "cas"))
+	require.NoError(t, err)
+
+	imp, err := importer.NewImporter(cas, db, nsDir)
+	require.NoError(t, err)
+
+	srv := handler.NewServer(db, imp, nsDir)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(func() {
+		ts.Close()
+	})
+
+	client := ts.Client()
+
+	// 1. Visit /ui/discover page
+	resp, err := client.Get(ts.URL + "/ui/discover")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	pageBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(pageBody), "マニフェスト作成支援")
+	assert.Contains(t, string(pageBody), "Step 1: 安全な下見")
+	assert.Contains(t, string(pageBody), "Step 2: 取捨選択")
+	assert.Contains(t, string(pageBody), "Step 3: マニフェスト確定")
+
+	// 2. Perform HTMX Survey Action
+	form := url.Values{}
+	form.Set("service", "")
+	surveyResp, err := client.PostForm(ts.URL+"/ui/discover/survey", form)
+	require.NoError(t, err)
+	defer func() { _ = surveyResp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, surveyResp.StatusCode)
+	surveyBody, err := io.ReadAll(surveyResp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(surveyBody), "Step 2: 検出された構成候補の取捨選択")
+
+	// 3. Test Generate with empty selection should return 400
+	emptyGenResp, err := client.PostForm(ts.URL+"/ui/discover/generate", url.Values{})
+	require.NoError(t, err)
+	defer func() { _ = emptyGenResp.Body.Close() }()
+	assert.Equal(t, http.StatusBadRequest, emptyGenResp.StatusCode)
+
+	// 4. Test Download before generation returns 404
+	preDownResp, err := client.Get(ts.URL + "/ui/discover/download")
+	require.NoError(t, err)
+	defer func() { _ = preDownResp.Body.Close() }()
+	assert.Equal(t, http.StatusNotFound, preDownResp.StatusCode)
 }

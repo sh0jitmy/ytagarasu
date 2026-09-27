@@ -29,6 +29,7 @@ import (
 	"github.com/sh0jitmy/ytagarasu/internal/audit"
 	"github.com/sh0jitmy/ytagarasu/internal/bundle"
 	"github.com/sh0jitmy/ytagarasu/internal/delta"
+	"github.com/sh0jitmy/ytagarasu/internal/discover"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/sh0jitmy/ytagarasu/internal/pkgengine"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
@@ -95,6 +96,73 @@ func main() {
 						Usage:     "Run static analysis and security lint on manifest",
 						ArgsUsage: "<path/to/manifest.yaml>",
 						Action:    runManifestLint,
+					},
+				},
+			},
+			{
+				Name:  "discover",
+				Usage: "Reverse-engineer existing server configuration and assist manifest creation",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "survey",
+						Usage: "Safely survey running systemd services and binaries to generate discovery-plan.yaml (Read-Only)",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "output",
+								Aliases: []string{"o"},
+								Value:   "discovery-plan.yaml",
+								Usage:   "Output path for discovery plan YAML",
+							},
+							&cli.StringFlag{
+								Name:    "service",
+								Aliases: []string{"s"},
+								Usage:   "Filter survey to a specific systemd service name",
+							},
+							&cli.StringFlag{
+								Name:  "sysroot",
+								Value: "/",
+								Usage: "System root directory to inspect (useful for testing)",
+							},
+						},
+						Action: runDiscoverSurvey,
+					},
+					{
+						Name:  "generate",
+						Usage: "Generate production manifest.yaml from approved discovery-plan.yaml",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "plan",
+								Aliases: []string{"p"},
+								Value:   "discovery-plan.yaml",
+								Usage:   "Input path of approved discovery plan YAML",
+							},
+							&cli.StringFlag{
+								Name:    "output",
+								Aliases: []string{"o"},
+								Value:   "manifest.yaml",
+								Usage:   "Output path for generated manifest.yaml",
+							},
+							&cli.BoolFlag{
+								Name:  "ingest",
+								Usage: "Mode A: Copy local physical binaries directly into bundle artifacts directory",
+							},
+							&cli.StringFlag{
+								Name:  "artifacts-dir",
+								Value: "artifacts",
+								Usage: "Directory to copy local binaries when ingest is enabled",
+							},
+							&cli.StringFlag{
+								Name:  "configs-dir",
+								Value: "configs",
+								Usage: "Directory to save sanitized configuration templates",
+							},
+							&cli.StringFlag{
+								Name:  "sysroot",
+								Value: "/",
+								Usage: "System root directory to inspect (useful for testing)",
+							},
+						},
+						Action: runDiscoverGenerate,
 					},
 				},
 			},
@@ -743,4 +811,94 @@ func printAuditRecords(records []audit.Record) {
 			hashPrefix,
 		)
 	}
+}
+
+func runDiscoverSurvey(c *cli.Context) error {
+	output := c.String("output")
+	service := c.String("service")
+	sysroot := c.String("sysroot")
+
+	fmt.Println("================================================================")
+	fmt.Println("   🦅 ytagarasu Discovery Survey (サーバー構成下見)")
+	fmt.Println("================================================================")
+	fmt.Println("[1/2] 稼働中サービスと構成要素を検出中...")
+
+	plan, err := discover.Survey(discover.SurveyOptions{
+		Sysroot: sysroot,
+		Service: service,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to survey server environment: %w", err)
+	}
+
+	for _, svc := range plan.Targets.Services {
+		binInfo := "Exec: " + svc.Binary
+		if svc.BinaryInfo != nil && svc.BinaryInfo.Type != "" {
+			binInfo = fmt.Sprintf("Exec: %s (%s, %s)", svc.Binary, svc.BinaryInfo.Type, svc.BinaryInfo.Architecture)
+		}
+		fmt.Printf("  ✔ %-28s を検出 (%s)\n", svc.Name, binInfo)
+	}
+
+	if len(plan.Targets.Services) == 0 {
+		fmt.Println("  ⚠ 有効なサービスが検出されませんでした。")
+	}
+
+	fmt.Println("\n[2/2] 構成プランを作成中...")
+	if err := discover.SavePlan(plan, output); err != nil {
+		return fmt.Errorf("failed to save discovery plan: %w", err)
+	}
+	fmt.Printf("  ✔ '%s' を生成しました。\n", output)
+
+	fmt.Println("================================================================")
+	fmt.Println("👉 次のステップ:")
+	fmt.Printf("   1. '%s' をエディタで開き、移行不要な行を削除/コメントアウトしてください。\n", output)
+	fmt.Printf("   2. 'ytagarasu discover generate -p %s' を実行してマニフェストを確定します。\n", output)
+	fmt.Println("================================================================")
+
+	return nil
+}
+
+func runDiscoverGenerate(c *cli.Context) error {
+	planPath := c.String("plan")
+	outputPath := c.String("output")
+	ingest := c.Bool("ingest")
+	artifactsDir := c.String("artifacts-dir")
+	configsDir := c.String("configs-dir")
+	sysroot := c.String("sysroot")
+
+	fmt.Println("================================================================")
+	fmt.Println("   🦅 ytagarasu Discovery Generate (マニフェスト確定生成)")
+	fmt.Println("================================================================")
+	fmt.Printf("[1/2] %s を読み込み中...\n", planPath)
+
+	m, err := discover.GenerateManifest(discover.GenerateOptions{
+		PlanPath:       planPath,
+		OutputPath:     outputPath,
+		ArtifactsDir:   artifactsDir,
+		ConfigsDir:     configsDir,
+		IngestOverride: ingest,
+		Sysroot:        sysroot,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate manifest: %w", err)
+	}
+
+	fmt.Printf("  ✔ 採択されたアプリケーション: %d 件\n", len(m.Applications))
+	for _, app := range m.Applications {
+		fmt.Printf("    - %s (Destination: %s)\n", app.Name, app.Destination)
+	}
+	fmt.Printf("  ✔ 設定ファイル: %d 件\n", len(m.Configs))
+	fmt.Printf("  ✔ サービス管理: %d 件\n", len(m.Services))
+
+	fmt.Println("\n[2/2] manifest.yaml を出力中...")
+	if err := discover.SaveManifest(m, outputPath); err != nil {
+		return fmt.Errorf("failed to save manifest: %w", err)
+	}
+	fmt.Printf("  ✔ '%s' を正常に生成しました！\n", outputPath)
+
+	fmt.Println("================================================================")
+	fmt.Println("🎉 完了: 次は 'ytagarasu bundle export' でオフライン配布バンドルを作成できます。")
+	fmt.Println("================================================================")
+
+	return nil
 }

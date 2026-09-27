@@ -26,13 +26,18 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/sh0jitmy/ytagarasu/internal/audit"
+	"github.com/sh0jitmy/ytagarasu/internal/discover"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/sh0jitmy/ytagarasu/internal/server/importer"
 	"github.com/sh0jitmy/ytagarasu/internal/server/store"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed templates/* static/*
@@ -101,12 +106,15 @@ type AuditData struct {
 
 // UI handles dashboard and audit HTML pages and HTMX components.
 type UI struct {
-	db             *store.DB
-	imp            *importer.Importer
-	dashboardTmpl  *template.Template
-	auditTmpl      *template.Template
-	componentsTmpl *template.Template
-	staticSub      http.Handler
+	db                        *store.DB
+	imp                       *importer.Importer
+	dashboardTmpl             *template.Template
+	auditTmpl                 *template.Template
+	discoverTmpl              *template.Template
+	componentsTmpl            *template.Template
+	staticSub                 http.Handler
+	lastGeneratedManifestYAML string
+	lastManifestMu            sync.RWMutex
 }
 
 // NewUI initializes and parses templates.
@@ -131,6 +139,16 @@ func NewUI(db *store.DB, imp *importer.Importer) (*UI, error) {
 		return nil, fmt.Errorf("failed parsing audit template: %w", err)
 	}
 
+	discoverTmpl, err := template.ParseFS(
+		EmbeddedAssets,
+		"templates/layout.html",
+		"templates/discover.html",
+		"templates/components/*.html",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing discover template: %w", err)
+	}
+
 	compTmpl, err := template.ParseFS(
 		EmbeddedAssets,
 		"templates/components/*.html",
@@ -149,6 +167,7 @@ func NewUI(db *store.DB, imp *importer.Importer) (*UI, error) {
 		imp:            imp,
 		dashboardTmpl:  dashTmpl,
 		auditTmpl:      auditTmpl,
+		discoverTmpl:   discoverTmpl,
 		componentsTmpl: compTmpl,
 		staticSub:      http.StripPrefix("/ui/static/", http.FileServer(http.FS(staticFS))),
 	}, nil
@@ -161,6 +180,7 @@ func (u *UI) RegisterRoutes(mux *http.ServeMux) {
 
 	// Full HTML Pages
 	mux.HandleFunc("GET /ui", u.handleDashboard)
+	mux.HandleFunc("GET /ui/discover", u.handleDiscoverPage)
 	mux.HandleFunc("GET /ui/audit", u.handleAudit)
 
 	// HTMX Partial Components
@@ -172,6 +192,9 @@ func (u *UI) RegisterRoutes(mux *http.ServeMux) {
 	// HTMX Interactive Actions
 	mux.HandleFunc("POST /ui/actions/import-bundle", u.handleImportBundleAction)
 	mux.HandleFunc("GET /ui/actions/verify-audit", u.handleVerifyAuditAction)
+	mux.HandleFunc("POST /ui/discover/survey", u.handleDiscoverSurveyAction)
+	mux.HandleFunc("POST /ui/discover/generate", u.handleDiscoverGenerateAction)
+	mux.HandleFunc("GET /ui/discover/download", u.handleDiscoverDownload)
 }
 
 func (u *UI) buildDashboardData(ctx context.Context) (DashboardData, error) {
@@ -498,4 +521,144 @@ func (u *UI) renderImportResult(w http.ResponseWriter, data importResultData) {
 	}
 	// HTMX swaps this directly into #import-result-container
 	_, _ = w.Write(buf.Bytes())
+}
+
+func (u *UI) handleDiscoverPage(w http.ResponseWriter, _ *http.Request) {
+	data := struct {
+		ActiveTab string
+	}{
+		ActiveTab: "discover",
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := u.discoverTmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (u *UI) handleDiscoverSurveyAction(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	serviceFilter := strings.TrimSpace(r.FormValue("service"))
+
+	plan, err := discover.Survey(discover.SurveyOptions{
+		Service: serviceFilter,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("下見に失敗しました: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Services []discover.PlanService
+	}{
+		Services: plan.Targets.Services,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := u.componentsTmpl.ExecuteTemplate(w, "discovery_survey.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (u *UI) handleDiscoverGenerateAction(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+
+	selectedServices := r.Form["services"]
+	if len(selectedServices) == 0 {
+		http.Error(w, "移行対象のサービスが選択されていません。", http.StatusBadRequest)
+		return
+	}
+
+	plan, err := discover.Survey(discover.SurveyOptions{})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("サーベイ実行に失敗しました: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	selectedMap := make(map[string]bool)
+	for _, s := range selectedServices {
+		selectedMap[s] = true
+	}
+
+	var filteredServices []discover.PlanService
+	for _, svc := range plan.Targets.Services {
+		if selectedMap[svc.Name] {
+			modeVal := r.FormValue("mode_" + svc.Name)
+			svc.Ingest = (modeVal == "mode_a")
+			filteredServices = append(filteredServices, svc)
+		}
+	}
+	plan.Targets.Services = filteredServices
+
+	tmpDir, err := os.MkdirTemp("", "ui_discover_*")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	planFile := filepath.Join(tmpDir, "discovery-plan.yaml")
+	if saveErr := discover.SavePlan(plan, planFile); saveErr != nil {
+		http.Error(w, saveErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	manifestFile := filepath.Join(tmpDir, "manifest.yaml")
+	artifactsDir := filepath.Join(tmpDir, "artifacts")
+	configsDir := filepath.Join(tmpDir, "configs")
+
+	m, genErr := discover.GenerateManifest(discover.GenerateOptions{
+		PlanPath:     planFile,
+		OutputPath:   manifestFile,
+		ArtifactsDir: artifactsDir,
+		ConfigsDir:   configsDir,
+	})
+	if genErr != nil {
+		http.Error(w, fmt.Sprintf("マニフェスト生成に失敗しました: %v", genErr), http.StatusInternalServerError)
+		return
+	}
+
+	manifestYAMLBytes, marshalErr := yaml.Marshal(m)
+	if marshalErr != nil {
+		http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	manifestYAMLStr := string(manifestYAMLBytes)
+	u.lastManifestMu.Lock()
+	u.lastGeneratedManifestYAML = manifestYAMLStr
+	u.lastManifestMu.Unlock()
+
+	data := struct {
+		Manifest     *manifest.Manifest
+		ManifestYAML string
+	}{
+		Manifest:     m,
+		ManifestYAML: manifestYAMLStr,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := u.componentsTmpl.ExecuteTemplate(w, "discovery_generate.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (u *UI) handleDiscoverDownload(w http.ResponseWriter, _ *http.Request) {
+	u.lastManifestMu.RLock()
+	yamlContent := u.lastGeneratedManifestYAML
+	u.lastManifestMu.RUnlock()
+
+	if yamlContent == "" {
+		http.Error(w, "生成されたマニフェストが存在しません。先に画面から生成を実行してください。", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-yaml")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"manifest.yaml\"")
+	_, _ = w.Write([]byte(yamlContent))
 }

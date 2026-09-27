@@ -1,0 +1,79 @@
+{{ define "title" }}マニフェスト作成支援 | ytagarasu{{ end }}
+
+{{ define "content" }}
+<div style="margin-bottom: 2rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+    <h1 style="font-size: 1.75rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 0.75rem;">
+      <span>🔍</span>
+      <span>マニフェスト作成支援 (KISSホワイトリストワークフロー)</span>
+    </h1>
+    <span class="badge badge-info" style="font-size: 0.85rem; padding: 0.35rem 0.75rem;">
+      Read-Only 下見 ➔ 確定生成
+    </span>
+  </div>
+  <p style="color: var(--text-secondary); margin: 0; font-size: 0.95rem;">
+    既存サーバーの稼働状態（systemd, バイナリ, 設定ファイル）を安全に下見し、不要なものを取捨選択してオフライン配布用 <code class="mono">manifest.yaml</code> を生成します。
+  </p>
+</div>
+
+<!-- Workflow Stepper Banner -->
+<div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem 2rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+  <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--accent-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700;">1</div>
+    <div>
+      <div style="font-weight: 600; font-size: 0.95rem;">Step 1: 安全な下見</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted);">サーバー変更ゼロで構成を検出</div>
+    </div>
+  </div>
+  <div style="color: var(--text-muted); font-size: 1.2rem;">➔</div>
+  <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-surface-elevated); border: 2px solid var(--border-default); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; font-weight: 700;">2</div>
+    <div>
+      <div style="font-weight: 600; font-size: 0.95rem;">Step 2: 取捨選択</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted);">移行対象をチェック・モード指定</div>
+    </div>
+  </div>
+  <div style="color: var(--text-muted); font-size: 1.2rem;">➔</div>
+  <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-surface-elevated); border: 2px solid var(--border-default); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; font-weight: 700;">3</div>
+    <div>
+      <div style="font-weight: 600; font-size: 0.95rem;">Step 3: マニフェスト確定</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted);">manifest.yaml ダウンロード</div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1: Survey Trigger Card -->
+<div class="card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.5rem; margin-bottom: 2rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.2rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+      <span>📡</span>
+      <span>Step 1: サーバー稼働状態のスキャン (Read-Only Survey)</span>
+    </h2>
+  </div>
+  <form hx-post="/ui/discover/survey" hx-target="#survey-results" hx-swap="innerHTML" style="display: flex; gap: 1rem; align-items: flex-end;">
+    <div style="flex: 1;">
+      <label for="service-filter" style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem;">
+        特定サービス絞り込み (任意、未入力時は全アプリケーションを自動検出)
+      </label>
+      <input type="text" id="service-filter" name="service" placeholder="例: payment-gw.service, billing-worker" style="width: 100%; padding: 0.6rem 0.85rem; background: var(--bg-base); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 0.9rem;" />
+    </div>
+    <button type="submit" class="btn" style="background: var(--accent-primary); color: #fff; padding: 0.65rem 1.5rem; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+      <span>下見を実行</span>
+      <span class="htmx-indicator" style="display: none;">⏳</span>
+    </button>
+  </form>
+</div>
+
+<!-- Step 2: Survey Results Container -->
+<div id="survey-results">
+  <div style="border: 2px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 3rem 2rem; text-align: center; color: var(--text-muted);">
+    <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">🔭</div>
+    <div style="font-weight: 600; font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 0.25rem;">まだ下見が実行されていません</div>
+    <div style="font-size: 0.9rem;">「下見を実行」ボタンをクリックして、サーバー上のサービス候補を検出してください。</div>
+  </div>
+</div>
+
+<!-- Step 3: Manifest Generation Result Container -->
+<div id="manifest-results" style="margin-top: 2rem;"></div>
+{{ end }}

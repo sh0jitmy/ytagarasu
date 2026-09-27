@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	// Import glebarez driver to register it for sqlite.
@@ -38,6 +39,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var schemaLock sync.Mutex
+
 // TestMain はテスト全体の実行前後にフック処理を行います。
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
@@ -46,6 +49,9 @@ func TestMain(m *testing.M) {
 // setupTestDB はインメモリ SQLite データベースを初期化し、スキーマ生成とシード投入を行います。
 func setupTestDB(t *testing.T) *ent.Client {
 	t.Helper()
+
+	schemaLock.Lock()
+	defer schemaLock.Unlock()
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(1)", t.Name())
 	db, err := sql.Open("sqlite", dsn)
