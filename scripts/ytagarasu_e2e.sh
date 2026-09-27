@@ -222,19 +222,19 @@ echo -e "\n${YELLOW}[Step 6/6] Verifying HTMX Dashboard, Audit UI, and Hash Chai
 
 # 1. Dashboard UI check
 UI_DASH=$(curl -s -f "http://127.0.0.1:${SERVER_PORT}/ui")
-echo "$UI_DASH" | grep -q "オフライン配信ダッシュボード"
-echo "$UI_DASH" | grep -q "billing-svc"
+[[ "$UI_DASH" == *"オフライン配信ダッシュボード"* ]]
+[[ "$UI_DASH" == *"billing-svc"* ]]
 echo -e "${GREEN}✓ Dashboard UI rendered with active billing-svc release.${NC}"
 
 # 2. Audit UI check
 UI_AUDIT=$(curl -s -f "http://127.0.0.1:${SERVER_PORT}/ui/audit")
-echo "$UI_AUDIT" | grep -q "改ざん耐性 SHA-256 監査チェーン"
-echo "$UI_AUDIT" | grep -q "release.import"
+[[ "$UI_AUDIT" == *"改ざん耐性 SHA-256 監査チェーン"* ]]
+[[ "$UI_AUDIT" == *"release.import"* ]]
 echo -e "${GREEN}✓ Audit log UI rendered with SHA-256 chained records.${NC}"
 
 # 3. Verify audit action endpoint
 VERIFY_HTML=$(curl -s -f "http://127.0.0.1:${SERVER_PORT}/ui/actions/verify-audit")
-echo "$VERIFY_HTML" | grep -q "チェーン整合性確認済み"
+[[ "$VERIFY_HTML" == *"チェーン整合性確認済み"* ]]
 echo -e "${GREEN}✓ In-place HTMX audit verification action confirmed.${NC}"
 
 # 4. CLI audit verify check
@@ -243,13 +243,13 @@ echo -e "${GREEN}✓ CLI audit verify succeeded with zero tampering.${NC}"
 
 # 5. Manifest Discovery UI check
 UI_DISCOVER=$(curl -s -f "http://127.0.0.1:${SERVER_PORT}/ui/discover")
-echo "$UI_DISCOVER" | grep -q "マニフェスト作成支援"
-echo "$UI_DISCOVER" | grep -q "Step 1: 安全な下見"
+[[ "$UI_DISCOVER" == *"マニフェスト作成支援"* ]]
+[[ "$UI_DISCOVER" == *"Step 1: 安全な下見"* ]]
 echo -e "${GREEN}✓ Manifest Discovery UI rendered properly.${NC}"
 
 # 6. Manifest Discovery Survey Action check
 UI_SURVEY=$(curl -s -f -X POST "http://127.0.0.1:${SERVER_PORT}/ui/discover/survey" -d "service=")
-echo "$UI_SURVEY" | grep -q "Step 2: 検出された構成候補の取捨選択"
+[[ "$UI_SURVEY" == *"Step 2: 検出された構成候補の取捨選択"* ]]
 echo -e "${GREEN}✓ Manifest Discovery Survey action verified.${NC}"
 
 # 7. Visual UI E2E & Snapshot generation
