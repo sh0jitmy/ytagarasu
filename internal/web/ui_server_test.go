@@ -26,14 +26,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"sync"
+
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/sh0jitmy/ytagarasu/ent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+var schemaLock sync.Mutex
+
 func setupTestUIDB(t *testing.T) *ent.Client {
 	t.Helper()
+	schemaLock.Lock()
+	defer schemaLock.Unlock()
+
 	dsn := fmt.Sprintf("file:mem_ui_%s?mode=memory&cache=shared&_pragma=foreign_keys(1)", t.Name())
 	db, err := sql.Open("sqlite", dsn)
 	require.NoError(t, err)

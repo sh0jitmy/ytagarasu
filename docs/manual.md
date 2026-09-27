@@ -55,6 +55,21 @@
 
 ## 3. エンドツーエンド運用手順 (Workflows)
 
+### Step 0: 既存サーバーからのマニフェスト作成支援（リバースエンジニアリング）
+
+稼働中の既存サーバーから構成を吸い上げて `manifest.yaml` を自動作成したい場合、**KISS原則に基づく 2 段階のホワイトリスト作成支援** を利用します。
+
+```bash
+# 1. サーバーの稼働状態を下見し、構成候補カタログを出力 (Read-Only)
+ytagarasu discover survey
+
+# 2. 生成された 'discovery-plan.yaml' をエディタで開き、不要な行を削除 / コメントアウト
+
+# 3. 確定したホワイトリストから manifest.yaml を生成
+ytagarasu discover generate -p discovery-plan.yaml -o manifest.yaml
+```
+- 詳細な設計思想や背景は [docs/manifest_discovery_journey_and_design_rationale.md](file:///Users/shjtmy/gravity/ytagarasu/docs/manifest_discovery_journey_and_design_rationale.md) および [docs/manifest_creation_support_prd_and_usecases.md](file:///Users/shjtmy/gravity/ytagarasu/docs/manifest_creation_support_prd_and_usecases.md) を参照してください。
+
 ### Step 1: オンライン環境でのデプロイマニフェスト定義
 
 インターネットに接続された開発・ステージング環境で、サービスのデプロイ定義ファイル（`manifest.yaml`）を作成します。
@@ -328,6 +343,13 @@ packages:
 ## 7. CLI コマンドリファレンス
 
 ### `ytagarasu`
+- `discover survey [options]`: 既存サーバーの稼働状態（systemd, バイナリ, 設定）を安全に下見し、ホワイトリスト下書き（`discovery-plan.yaml`）を出力 (Read-Only)
+  - `--output, -o`: 出力先プランファイルパス（デフォルト: `discovery-plan.yaml`）
+  - `--service`: 特定のサービスのみに対象を絞り込む
+- `discover generate [options]`: 確定したホワイトリスト計画書をもとに `manifest.yaml` を生成
+  - `--plan, -p`: 読み込む計画ファイルパス（デフォルト: `discovery-plan.yaml`）
+  - `--output, -o`: 出力先マニフェストパス（デフォルト: `manifest.yaml`）
+  - `--ingest`: 現物バイナリをバンドル用 CAS（`artifacts/`）に直接吸い上げる（Mode A）
 - `manifest init`: 対話型ウィザードによる `manifest.yaml` 作成
 - `manifest eval -m <file>`: マニフェストの事前検証とリスク評価
 - `keygen -d <dir>`: Ed25519 署名・検証鍵ペア（`private.key`, `public.key`）の生成
