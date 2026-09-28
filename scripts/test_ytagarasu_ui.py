@@ -59,7 +59,7 @@ CHROME_BIN = find_chrome_binary()
 
 
 def log(msg, level="INFO"):
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{level}] {msg}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{level}] {msg}", flush=True)
 
 
 def http_get(url):
@@ -79,13 +79,15 @@ def take_screenshot(url, output_path, width=1440, height=900):
         "--headless=new",
         "--disable-gpu",
         "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--log-level=3",
         "--hide-scrollbars",
         "--lang=ja-JP",
         "--force-color-profile=srgb",
         "--font-render-hinting=none",
         "--disable-font-subpixel-positioning",
         "--virtual-time-budget=2000",
-        f"--window-size={width},{height}",
+        "--window-size={width},{height}",
         f"--screenshot={output_path}",
         url,
     ]
