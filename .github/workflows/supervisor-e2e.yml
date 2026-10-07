@@ -70,17 +70,17 @@ jobs:
 
           echo "==> Testing single process restart..."
           ./bin/ytg supervisor restart worker-svc
-          sleep 1
+          sleep 2
           ./bin/ytg supervisor status
 
           echo "==> Testing manifest-wide restart (--all)..."
           ./bin/ytg supervisor restart --all
-          sleep 1
+          sleep 2
           ./bin/ytg supervisor status
 
           echo "==> Testing manifest rollback (--all)..."
           ./bin/ytg supervisor rollback --all
-          sleep 1
+          sleep 2
 
           echo "==> Terminating supervisor daemon gracefully..."
           kill -TERM $DAEMON_PID || true

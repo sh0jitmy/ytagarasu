@@ -234,9 +234,11 @@ func (m *ManifestSupervisor) Status() map[string]ProcessRuntimeStatus {
 	return res
 }
 
-// SaveState writes current status to a state file.
+// SaveState writes current status to a state file atomically.
 func (m *ManifestSupervisor) SaveState(statePath string) error {
 	cleanPath := filepath.Clean(statePath)
+	tmpPath := cleanPath + ".tmp"
+
 	state := SupervisorState{
 		ManifestPath: m.manifestPath,
 		UpdatedAt:    time.Now(),
@@ -248,20 +250,45 @@ func (m *ManifestSupervisor) SaveState(statePath string) error {
 		return fmt.Errorf("failed to marshal supervisor state: %w", err)
 	}
 
-	return os.WriteFile(cleanPath, data, 0600)
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write temp state: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, cleanPath); err != nil {
+		return fmt.Errorf("failed to atomically commit state: %w", err)
+	}
+
+	return nil
 }
 
-// LoadState reads supervisor state from a state file.
+// LoadState reads supervisor state from a state file with transient retries.
 func LoadState(statePath string) (*SupervisorState, error) {
 	cleanPath := filepath.Clean(statePath)
-	data, err := os.ReadFile(cleanPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read state file: %w", err)
+
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		data, err := os.ReadFile(cleanPath)
+		if err != nil {
+			lastErr = err
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+
+		if len(data) == 0 {
+			lastErr = errors.New("state file is currently empty")
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+
+		var state SupervisorState
+		if err := json.Unmarshal(data, &state); err != nil {
+			lastErr = err
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+
+		return &state, nil
 	}
 
-	var state SupervisorState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
-	}
-	return &state, nil
+	return nil, fmt.Errorf("failed to read state file after retries: %w", lastErr)
 }
