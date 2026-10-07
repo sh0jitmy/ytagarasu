@@ -108,7 +108,7 @@ func main() {
 
 	case "manifest", "bundle", "audit", "discover":
 		// Transparently delegate to ytagarasu binary if available
-		// #nosec G204 -- Intentional delegation to sibling ytagarasu command
+		//nolint:gosec // Intentional delegation to sibling ytagarasu command
 		cmd := exec.Command("ytagarasu", os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
