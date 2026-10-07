@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"time"
 
@@ -105,6 +106,18 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "manifest", "bundle", "audit", "discover":
+		// Transparently delegate to ytagarasu binary if available
+		// #nosec G204 -- Intentional delegation to sibling ytagarasu command
+		cmd := exec.Command("ytagarasu", os.Args[1:]...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "[ytg delegation error] failed to execute 'ytagarasu %s': %v\n", command, err)
+			os.Exit(1)
+		}
+
 	case "help", "--help", "-h":
 		printHelp()
 
@@ -119,8 +132,12 @@ func printHelp() {
 	fmt.Print(BannerArt)
 	fmt.Println("Usage: ytg <command> [options]")
 	fmt.Println()
-	fmt.Println("Commands (Process Supervisor Primitives):")
-	fmt.Println("  supervisor <subcmd>     Process supervisor primitives (run, status, restart, rollback)")
+	fmt.Println("Commands:")
+	fmt.Println("  supervisor <subcmd>     Manage runtime process supervision and rollback (run, status, restart, rollback)")
+	fmt.Println("  manifest <subcmd>       Manage deployment bundle manifests (init, generate, validate, lint)")
+	fmt.Println("  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
+	fmt.Println("  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
+	fmt.Println("  discover <subcmd>       Interactive server survey and automated manifest discovery (survey, generate)")
 	fmt.Println("  version                 Show binary version and build metadata")
 	fmt.Println("  help                    Show help information")
 	fmt.Println()
@@ -128,12 +145,14 @@ func printHelp() {
 	fmt.Println("  ytg supervisor status")
 	fmt.Println("  ytg supervisor restart backend-api")
 	fmt.Println("  ytg supervisor rollback backend-api")
+	fmt.Println("  ytg manifest validate -f manifest.yaml")
+	fmt.Println("  ytg bundle verify --bundle app.tgz")
 }
 
 func printSupervisorHelp() {
 	fmt.Println("Usage: ytg supervisor <subcommand> [options]")
 	fmt.Println()
-	fmt.Println("Subcommands (ADR-0013 / ADR-0014 Primitives):")
+	fmt.Println("Subcommands (Process Supervisor Primitives):")
 	fmt.Println("  run -c <file.yaml>       Start supervisor daemon with dedicated manifest")
 	fmt.Println("  status [--json]          Display process PID, health, restarts, and TCP socket states")
 	fmt.Println("  restart <process-name>   Gracefully restart a specific supervised process")
