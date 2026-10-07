@@ -1,3 +1,19 @@
+// Copyright 2026 [Copyright Holder]
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// Author: [YOUR_NAME]
+
 // Package supervisor provides pure Go process supervision, self-healing,
 // and stateful rollback capabilities for ytagarasu (ytg).
 package supervisor
@@ -77,6 +93,7 @@ type BaseSupervisor struct {
 	startedAt   time.Time
 	lastCrashAt time.Time
 	cancel      context.CancelFunc
+	waitDone    chan struct{}
 }
 
 // NewProcessSupervisor creates an OS-aware supervisor instance.
@@ -99,6 +116,7 @@ func (s *BaseSupervisor) Start(ctx context.Context) error {
 	cmdCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 
+	// #nosec G204 -- Intentional process supervisor execution of configured binary and arguments
 	cmd := exec.CommandContext(cmdCtx, s.spec.Binary, s.spec.Args...)
 	if s.spec.WorkDir != "" {
 		cmd.Dir = s.spec.WorkDir
@@ -119,14 +137,16 @@ func (s *BaseSupervisor) Start(ctx context.Context) error {
 	s.cmd = cmd
 	s.state = StateRunning
 	s.startedAt = time.Now()
+	s.waitDone = make(chan struct{})
 
-	go s.watchProcess(cmd)
+	go s.watchProcess(cmd, s.waitDone)
 
 	return nil
 }
 
-func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd) {
+func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd, waitDone chan struct{}) {
 	err := cmd.Wait()
+	close(waitDone)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -153,10 +173,9 @@ func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd) {
 
 func (s *BaseSupervisor) Stop(gracePeriod time.Duration) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.state != StateRunning || s.cmd == nil || s.cmd.Process == nil {
 		s.state = StateStopped
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -164,17 +183,17 @@ func (s *BaseSupervisor) Stop(gracePeriod time.Duration) error {
 	if s.cancel != nil {
 		s.cancel()
 	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- s.cmd.Wait()
-	}()
+	waitDone := s.waitDone
+	proc := s.cmd.Process
+	s.mu.Unlock()
 
 	select {
 	case <-time.After(gracePeriod):
-		_ = s.cmd.Process.Kill()
-		<-done
-	case <-done:
+		if proc != nil {
+			_ = proc.Kill()
+		}
+		<-waitDone
+	case <-waitDone:
 	}
 
 	return nil
