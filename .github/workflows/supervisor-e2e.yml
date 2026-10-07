@@ -1,0 +1,133 @@
+name: Supervisor Cross-Platform E2E (Linux & Windows)
+
+on:
+  push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  supervisor-e2e:
+    name: Supervisor E2E Matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build ytg Binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p bin
+          go build -v -o bin/ytg ./cmd/ytg
+
+      - name: Build ytg Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin
+          go build -v -o bin\ytg.exe ./cmd/ytg
+
+      - name: Run Supervisor Unit Tests
+        run: go test -v ./pkg/supervisor/...
+
+      - name: Run Linux Manifest Supervisor E2E Test
+        if: runner.os == 'Linux'
+        run: |
+          cat << 'MANIFEST' > manifest-test.yaml
+          version: "1.0"
+          processes:
+            - name: "worker-svc"
+              binary: "sleep"
+              args: ["300"]
+              auto_restart: true
+              max_retries: 3
+            - name: "health-svc"
+              binary: "sleep"
+              args: ["300"]
+              auto_restart: true
+              max_retries: 3
+          MANIFEST
+
+          echo "==> Starting supervisor daemon in background..."
+          ./bin/ytg supervisor run -c manifest-test.yaml &
+          DAEMON_PID=$!
+          sleep 2
+
+          echo "==> Checking supervisor status..."
+          ./bin/ytg supervisor status
+          ./bin/ytg supervisor status --json
+
+          echo "==> Testing single process restart..."
+          ./bin/ytg supervisor restart worker-svc
+          sleep 1
+          ./bin/ytg supervisor status
+
+          echo "==> Testing manifest-wide restart (--all)..."
+          ./bin/ytg supervisor restart --all
+          sleep 1
+          ./bin/ytg supervisor status
+
+          echo "==> Testing manifest rollback (--all)..."
+          ./bin/ytg supervisor rollback --all
+          sleep 1
+
+          echo "==> Terminating supervisor daemon gracefully..."
+          kill -TERM $DAEMON_PID || true
+          wait $DAEMON_PID 2>/dev/null || true
+          echo "==> Linux Supervisor E2E completed successfully!"
+
+      - name: Run Windows Manifest Supervisor E2E Test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          version: "1.0"
+          processes:
+            - name: "worker-win"
+              binary: "powershell"
+              args: ["-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
+              auto_restart: true
+              max_retries: 3
+            - name: "health-win"
+              binary: "powershell"
+              args: ["-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
+              auto_restart: true
+              max_retries: 3
+          '@ | Set-Content -Path manifest-test.yaml -Encoding utf8
+
+          Write-Host "==> Starting supervisor daemon on Windows..."
+          $proc = Start-Process -FilePath ".in\ytg.exe" -ArgumentList "supervisor","run","-c","manifest-test.yaml" -PassThru
+          Start-Sleep -Seconds 3
+
+          Write-Host "==> Checking supervisor status..."
+          .in\ytg.exe supervisor status
+          .in\ytg.exe supervisor status --json
+
+          Write-Host "==> Testing single process restart..."
+          .in\ytg.exe supervisor restart worker-win
+          Start-Sleep -Seconds 2
+          .in\ytg.exe supervisor status
+
+          Write-Host "==> Testing manifest-wide restart (--all)..."
+          .in\ytg.exe supervisor restart --all
+          Start-Sleep -Seconds 2
+          .in\ytg.exe supervisor status
+
+          Write-Host "==> Testing manifest rollback (--all)..."
+          .in\ytg.exe supervisor rollback --all
+          Start-Sleep -Seconds 1
+
+          Write-Host "==> Terminating supervisor daemon..."
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          Write-Host "==> Windows Supervisor E2E completed successfully!"

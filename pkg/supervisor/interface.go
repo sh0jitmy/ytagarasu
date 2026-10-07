@@ -205,13 +205,13 @@ func (s *BaseSupervisor) Restart(ctx context.Context) error {
 }
 
 func (s *BaseSupervisor) Rollback(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	fmt.Printf("[ytg supervisor ESCAPE HATCH] Triggering stateful rollback for '%s'...\n", s.spec.Name)
 	_ = s.Stop(1 * time.Second)
 
+	s.mu.Lock()
 	s.state = StateRollbacked
+	s.mu.Unlock()
+
 	return s.Start(ctx)
 }
 
