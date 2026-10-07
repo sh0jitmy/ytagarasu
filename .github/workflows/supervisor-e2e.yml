@@ -2,7 +2,7 @@ name: Supervisor Cross-Platform E2E (Linux & Windows)
 
 on:
   push:
-    branches: [ main, feature/* ]
+    branches: [ main, "feature/*" ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path bin
-          go build -v -o bin\ytg.exe ./cmd/ytg
+          go build -v -o bin/ytg.exe ./cmd/ytg
 
       - name: Run Supervisor Unit Tests
         run: go test -v ./pkg/supervisor/...
@@ -107,25 +107,25 @@ jobs:
           '@ | Set-Content -Path manifest-test.yaml -Encoding utf8
 
           Write-Host "==> Starting supervisor daemon on Windows..."
-          $proc = Start-Process -FilePath ".in\ytg.exe" -ArgumentList "supervisor","run","-c","manifest-test.yaml" -PassThru
+          $proc = Start-Process -FilePath "./bin/ytg.exe" -ArgumentList "supervisor","run","-c","manifest-test.yaml" -PassThru
           Start-Sleep -Seconds 3
 
           Write-Host "==> Checking supervisor status..."
-          .in\ytg.exe supervisor status
-          .in\ytg.exe supervisor status --json
+          ./bin/ytg.exe supervisor status
+          ./bin/ytg.exe supervisor status --json
 
           Write-Host "==> Testing single process restart..."
-          .in\ytg.exe supervisor restart worker-win
+          ./bin/ytg.exe supervisor restart worker-win
           Start-Sleep -Seconds 2
-          .in\ytg.exe supervisor status
+          ./bin/ytg.exe supervisor status
 
           Write-Host "==> Testing manifest-wide restart (--all)..."
-          .in\ytg.exe supervisor restart --all
+          ./bin/ytg.exe supervisor restart --all
           Start-Sleep -Seconds 2
-          .in\ytg.exe supervisor status
+          ./bin/ytg.exe supervisor status
 
           Write-Host "==> Testing manifest rollback (--all)..."
-          .in\ytg.exe supervisor rollback --all
+          ./bin/ytg.exe supervisor rollback --all
           Start-Sleep -Seconds 1
 
           Write-Host "==> Terminating supervisor daemon..."
