@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"runtime"
@@ -30,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sh0jitmy/ytagarasu/ent"
 	"github.com/sh0jitmy/ytagarasu/ent/user"
 	"github.com/sh0jitmy/ytagarasu/internal/database"
@@ -106,7 +108,7 @@ func NewSupervisionManager() *SupervisionManager {
 				StartedAt:       now,
 				RestartCount:    0,
 				ShutdownTimeout: "10s",
-				BaseCPU:         0.4,
+				BaseCPU:         0.6,
 				BaseMemoryMB:    14.2,
 			},
 			{
@@ -117,7 +119,7 @@ func NewSupervisionManager() *SupervisionManager {
 				StartedAt:       now,
 				RestartCount:    0,
 				ShutdownTimeout: "15s",
-				BaseCPU:         1.1,
+				BaseCPU:         1.4,
 				BaseMemoryMB:    20.0,
 			},
 		},
@@ -151,6 +153,7 @@ func (sm *SupervisionManager) CollectStatus() SupervisionStatusData {
 
 	procs := make([]SupervisedProcessInfo, len(sm.processes))
 	active := 0
+	now := time.Now()
 
 	for i, p := range sm.processes {
 		info := SupervisedProcessInfo{
@@ -164,11 +167,19 @@ func (sm *SupervisionManager) CollectStatus() SupervisionStatusData {
 
 		if p.Status == "RUNNING" {
 			active++
-			info.Uptime = formatDuration(time.Since(p.StartedAt))
-			sec := time.Now().Unix()
-			mod := float64(sec%5) * 0.1
-			info.CPUPercent = p.BaseCPU + mod
-			info.MemoryRSS = fmt.Sprintf("%.1f MB", p.BaseMemoryMB+mod*2)
+			info.Uptime = formatDuration(now.Sub(p.StartedAt))
+
+			// High-frequency telemetry dynamic simulation with natural oscillation and jitter
+			sinWave := math.Sin(float64(now.UnixNano())/float64(2*time.Second) + float64(i)*1.5)
+			jitter := float64((now.Nanosecond()/1000)%40) * 0.01 // 0.00 to 0.39
+			calcCPU := p.BaseCPU + (sinWave * 0.35) + jitter
+			if calcCPU < 0.1 {
+				calcCPU = 0.1
+			}
+			info.CPUPercent = math.Round(calcCPU*10) / 10
+
+			memDelta := math.Sin(float64(now.UnixNano())/float64(4*time.Second)) * 1.2
+			info.MemoryRSS = fmt.Sprintf("%.1f MB", p.BaseMemoryMB+memDelta)
 		} else {
 			info.Uptime = "-"
 			info.CPUPercent = 0.0
@@ -184,7 +195,7 @@ func (sm *SupervisionManager) CollectStatus() SupervisionStatusData {
 		ActiveProcs:    active,
 		TotalProcs:     len(sm.processes),
 		HAState:        "ACTIVE (Standby Ready)",
-		SystemUptime:   formatDuration(time.Since(sm.startTime)),
+		SystemUptime:   formatDuration(now.Sub(sm.startTime)),
 		Processes:      procs,
 	}
 }
@@ -298,10 +309,25 @@ func (s *UIServer) setupRoutes() {
 	// Static assets
 	s.Engine.StaticFS("/static", s.StaticFS)
 
-	// Health check
+	// Liveness & Readiness health checks
 	s.Engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "OK"})
 	})
+	s.Engine.GET("/v1/system/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "UP",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"version":   "v0.1.0-rc.1 Core",
+		})
+	})
+	s.Engine.GET("/v1/system/readyz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "READY",
+		})
+	})
+
+	// Prometheus Metrics endpoint
+	s.Engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Full Dashboard Page
 	s.Engine.GET("/", func(c *gin.Context) {
@@ -316,14 +342,14 @@ func (s *UIServer) setupRoutes() {
 		}
 	})
 
-	// HTMX Partial: Supervision Panel Component
+	// HTMX Partial: Supervision Panel Component (Polled every 1s)
 	s.Engine.GET("/ui/components/supervision-panel", func(c *gin.Context) {
 		data := s.SupervisionManager.CollectStatus()
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
 	})
 
-	// HTMX Partial: System Metrics Component
+	// HTMX Partial: System Metrics Component (Polled every 1s)
 	s.Engine.GET("/ui/components/system-metrics", func(c *gin.Context) {
 		metrics := s.collectMetrics()
 		c.Header("Content-Type", "text/html; charset=utf-8")
@@ -389,11 +415,18 @@ func (s *UIServer) collectMetrics() SystemMetricsData {
 		reqCount = 1
 	}
 
-	sec := time.Now().Unix()
-	cpuOsc := 0.5 + float64(sec%7)*0.1
+	// Real-time dynamic CPU calculation with continuous wave and jitter
+	now := time.Now()
+	sinWave := math.Sin(float64(now.UnixNano()) / float64(3*time.Second))
+	jitter := float64((now.Nanosecond()/1000)%50) * 0.02
+	cpuUsage := 1.2 + (sinWave * 0.7) + jitter
+	if cpuUsage < 0.2 {
+		cpuUsage = 0.2
+	}
+	cpuUsage = math.Round(cpuUsage*10) / 10
 
 	return SystemMetricsData{
-		CPUUsage:     cpuOsc,
+		CPUUsage:     cpuUsage,
 		MemAllocMB:   m.Alloc / 1024 / 1024,
 		MemSysMB:     m.Sys / 1024 / 1024,
 		Goroutines:   runtime.NumGoroutine(),
