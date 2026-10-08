@@ -1,0 +1,10 @@
+services:
+  demo-server:
+    image: ytagarasu-demo:latest
+    container_name: ytagarasu-demo-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    working_dir: /app
+    environment:
+      - LOG_LEVEL=info

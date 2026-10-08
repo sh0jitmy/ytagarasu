@@ -81,6 +81,7 @@ build: generate
 	@mkdir -p bin
 	@go build -v -o bin/app ./cmd/app
 	@go build -v -o bin/web ./cmd/web
+	@go build -v -o bin/ytg ./cmd/ytg
 	@go build -v -o bin/ytagarasu ./cmd/ytagarasu
 	@go build -v -o bin/ytagarasu-server ./cmd/ytagarasu-server
 	@go build -v -o bin/ytagarasu-agent ./cmd/ytagarasu-agent
@@ -211,3 +212,12 @@ clean:
 	@echo "==> Cleaning up build artifacts..."
 	@rm -rf bin/ dist/ ent/migrate/migrations/ test_reports/
 	@go clean -testcache
+
+demo-up:
+	@bash demo/run.sh start
+
+demo-down:
+	@bash demo/run.sh stop
+
+demo-status:
+	@bash demo/run.sh status
