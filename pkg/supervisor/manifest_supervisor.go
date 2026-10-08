@@ -250,8 +250,20 @@ func (m *ManifestSupervisor) SaveState(statePath string) error {
 		return fmt.Errorf("failed to marshal supervisor state: %w", err)
 	}
 
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open temp state: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("failed to write temp state: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("failed to sync temp state (fsync): %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp state: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, cleanPath); err != nil {

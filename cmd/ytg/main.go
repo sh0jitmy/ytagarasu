@@ -148,10 +148,14 @@ func handleSupervisor(args []string) {
 		}
 
 		fmt.Printf("[ytg supervisor] Manifest: %s (updated: %s)\n", state.ManifestPath, state.UpdatedAt.Format(time.RFC3339))
-		fmt.Printf("%-20s %-8s %-14s %-10s %s\n", "NAME", "PID", "STATE", "RESTARTS", "COMMAND")
+		fmt.Printf("%-18s %-7s %-12s %-9s %-11s %s\n", "NAME", "PID", "STATE", "RESTARTS", "STARTED_AT", "COMMAND")
 		fmt.Println("--------------------------------------------------------------------------------")
 		for name, p := range state.Processes {
-			fmt.Printf("%-20s %-8d %-14s %-10d %s\n", name, p.PID, p.State, p.Restarts, p.CurrentPath)
+			startedStr := "-"
+			if !p.StartedAt.IsZero() {
+				startedStr = p.StartedAt.Format("15:04:05")
+			}
+			fmt.Printf("%-18s %-7d %-12s %-9d %-11s %s\n", name, p.PID, p.State, p.Restarts, startedStr, p.CurrentPath)
 		}
 
 	case "restart":
