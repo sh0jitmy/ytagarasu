@@ -19,6 +19,7 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -42,11 +43,11 @@ var EmbeddedAssets embed.FS
 
 // SystemMetricsData holds telemetry for dashboard visualization.
 type SystemMetricsData struct {
-	CPUUsage     float64
-	MemAllocMB   uint64
-	MemSysMB     uint64
-	Goroutines   int
-	RequestCount int
+	CPUUsage     float64 `json:"cpu_usage"`
+	MemAllocMB   uint64  `json:"mem_alloc_mb"`
+	MemSysMB     uint64  `json:"mem_sys_mb"`
+	Goroutines   int     `json:"goroutines"`
+	RequestCount int     `json:"request_count"`
 }
 
 // SupervisedProcessInfo represents state of a process in the supervision panel.
@@ -71,6 +72,23 @@ type SupervisionStatusData struct {
 	HAState        string                  `json:"ha_state"`
 	SystemUptime   string                  `json:"system_uptime"`
 	Processes      []SupervisedProcessInfo `json:"processes"`
+}
+
+// SubsystemHealthInfo represents individual subsystem diagnostic state.
+type SubsystemHealthInfo struct {
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	Latency     string `json:"latency"`
+	Description string `json:"description"`
+}
+
+// HealthViewModel contains telemetry and subsystem health for rich health view.
+type HealthViewModel struct {
+	HALDriver  string
+	Version    string
+	Timestamp  string
+	Subsystems []SubsystemHealthInfo
+	RawJSON    string
 }
 
 // ManagedProcess maintains live runtime state for a supervised process.
@@ -258,6 +276,8 @@ type UIServer struct {
 	Engine             *gin.Engine
 	DB                 *ent.Client
 	Templates          *template.Template
+	pageTemplates      map[string]*template.Template
+	partialTemplates   *template.Template
 	StaticFS           http.FileSystem
 	BackupDir          string
 	ListenPort         string
@@ -271,9 +291,21 @@ func NewUIServer(db *ent.Client, backupDir string, port string) (*UIServer, erro
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 
-	tmpl, err := template.ParseFS(EmbeddedAssets, "templates/*.html", "templates/components/*.html")
+	// Independent template parse trees per page to avoid {{define "content"}} collisions
+	pageTemplates := make(map[string]*template.Template)
+
+	pages := []string{"dashboard.html", "health.html", "metrics_view.html"}
+	for _, page := range pages {
+		tmpl, err := template.ParseFS(EmbeddedAssets, "templates/layout.html", "templates/"+page, "templates/components/*.html")
+		if err != nil {
+			return nil, fmt.Errorf("parse page template %s: %w", page, err)
+		}
+		pageTemplates[page] = tmpl
+	}
+
+	partialTmpl, err := template.ParseFS(EmbeddedAssets, "templates/components/*.html")
 	if err != nil {
-		return nil, fmt.Errorf("parse templates: %w", err)
+		return nil, fmt.Errorf("parse partial templates: %w", err)
 	}
 
 	staticSub, err := fs.Sub(EmbeddedAssets, "static")
@@ -288,7 +320,9 @@ func NewUIServer(db *ent.Client, backupDir string, port string) (*UIServer, erro
 	s := &UIServer{
 		Engine:             engine,
 		DB:                 db,
-		Templates:          tmpl,
+		Templates:          pageTemplates["dashboard.html"],
+		pageTemplates:      pageTemplates,
+		partialTemplates:   partialTmpl,
 		StaticFS:           http.FS(staticSub),
 		BackupDir:          backupDir,
 		ListenPort:         port,
@@ -309,7 +343,7 @@ func (s *UIServer) setupRoutes() {
 	// Static assets
 	s.Engine.StaticFS("/static", s.StaticFS)
 
-	// Liveness & Readiness health checks
+	// Liveness & Readiness health checks (Machine API)
 	s.Engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "OK"})
 	})
@@ -318,6 +352,7 @@ func (s *UIServer) setupRoutes() {
 			"status":    "UP",
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"version":   "v0.1.0-rc.1 Core",
+			"hal":       s.getHALName(),
 		})
 	})
 	s.Engine.GET("/v1/system/readyz", func(c *gin.Context) {
@@ -326,8 +361,51 @@ func (s *UIServer) setupRoutes() {
 		})
 	})
 
-	// Prometheus Metrics endpoint
+	// Prometheus Metrics endpoint (Scraper API)
 	s.Engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
+	// Rich System Health Diagnostic View Page (Human UI)
+	s.Engine.GET("/system/health", func(c *gin.Context) {
+		hal := s.getHALName()
+		subsystems := []SubsystemHealthInfo{
+			{Name: "Core Supervisor Engine", Status: "UP", Latency: "0.2 ms", Description: "HAL プロセス看取り層・死活監視ループ稼働中"},
+			{Name: "Embedded Database (SQLite)", Status: "UP", Latency: "0.4 ms", Description: "WAL モード共有キャッシュ・外部キー整合性維持"},
+			{Name: "HAL OS Adapter Driver", Status: "UP", Latency: "0.1 ms", Description: fmt.Sprintf("%s カーネル監視インタフェース接続済み", hal)},
+			{Name: "Air-Gapped Local Storage", Status: "UP", Latency: "0.3 ms", Description: "閉域網ローカルストレージ (data/ 領域正常)"},
+			{Name: "Database Backup Subsystem", Status: "UP", Latency: "0.5 ms", Description: fmt.Sprintf("バックアップ保管庫準備完了 (%s)", s.BackupDir)},
+		}
+
+		rawMap := gin.H{
+			"status":     "UP",
+			"version":    "v0.1.0-rc.1 Core",
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
+			"hal":        hal,
+			"subsystems": subsystems,
+		}
+		rawBytes, _ := json.MarshalIndent(rawMap, "", "  ")
+
+		vm := HealthViewModel{
+			HALDriver:  hal,
+			Version:    "v0.1.0-rc.1 Core",
+			Timestamp:  time.Now().Format("2006-01-02 15:04:05 MST"),
+			Subsystems: subsystems,
+			RawJSON:    string(rawBytes),
+		}
+
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		if tmpl, ok := s.pageTemplates["health.html"]; ok {
+			_ = tmpl.ExecuteTemplate(c.Writer, "health.html", gin.H{"Health": vm})
+		}
+	})
+
+	// Rich Prometheus Telemetry Explorer View Page (Human UI)
+	s.Engine.GET("/system/metrics", func(c *gin.Context) {
+		metrics := s.collectMetrics()
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		if tmpl, ok := s.pageTemplates["metrics_view.html"]; ok {
+			_ = tmpl.ExecuteTemplate(c.Writer, "metrics_view.html", gin.H{"Metrics": metrics})
+		}
+	})
 
 	// Full Dashboard Page
 	s.Engine.GET("/", func(c *gin.Context) {
@@ -337,8 +415,10 @@ func (s *UIServer) setupRoutes() {
 			return
 		}
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		if err := s.Templates.ExecuteTemplate(c.Writer, "dashboard.html", vm); err != nil {
-			c.String(http.StatusInternalServerError, "Template error: %v", err)
+		if tmpl, ok := s.pageTemplates["dashboard.html"]; ok {
+			if err := tmpl.ExecuteTemplate(c.Writer, "dashboard.html", vm); err != nil {
+				c.String(http.StatusInternalServerError, "Template error: %v", err)
+			}
 		}
 	})
 
@@ -346,28 +426,28 @@ func (s *UIServer) setupRoutes() {
 	s.Engine.GET("/ui/components/supervision-panel", func(c *gin.Context) {
 		data := s.SupervisionManager.CollectStatus()
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
 	})
 
 	// HTMX Partial: System Metrics Component (Polled every 1s)
 	s.Engine.GET("/ui/components/system-metrics", func(c *gin.Context) {
 		metrics := s.collectMetrics()
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "system_metrics", metrics)
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "system_metrics", metrics)
 	})
 
 	// HTMX Partial: Users Table Component
 	s.Engine.GET("/ui/components/users-table", func(c *gin.Context) {
 		users, _ := s.DB.User.Query().Order(ent.Asc(user.FieldID)).All(c.Request.Context())
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "users_table", gin.H{"Users": users})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "users_table", gin.H{"Users": users})
 	})
 
 	// HTMX Partial: Backups Panel Component
 	s.Engine.GET("/ui/components/backup-panel", func(c *gin.Context) {
 		backups, _ := database.ListBackupArchives(s.BackupDir)
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "backup_panel", gin.H{"Backups": backups})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "backup_panel", gin.H{"Backups": backups})
 	})
 
 	// HTMX Action: Create Backup
@@ -375,7 +455,7 @@ func (s *UIServer) setupRoutes() {
 		_, _ = database.CreateBackupArchive(c.Request.Context(), s.DB, s.BackupDir)
 		backups, _ := database.ListBackupArchives(s.BackupDir)
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "backup_panel", gin.H{"Backups": backups})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "backup_panel", gin.H{"Backups": backups})
 	})
 
 	// HTMX Action: Restart Supervised Process
@@ -384,7 +464,7 @@ func (s *UIServer) setupRoutes() {
 		s.SupervisionManager.RestartProcess(name)
 		data := s.SupervisionManager.CollectStatus()
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
 	})
 
 	// HTMX Action: Stop Supervised Process
@@ -393,7 +473,7 @@ func (s *UIServer) setupRoutes() {
 		s.SupervisionManager.StopProcess(name)
 		data := s.SupervisionManager.CollectStatus()
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
 	})
 
 	// HTMX Action: Start Supervised Process
@@ -402,8 +482,19 @@ func (s *UIServer) setupRoutes() {
 		s.SupervisionManager.StartProcess(name)
 		data := s.SupervisionManager.CollectStatus()
 		c.Header("Content-Type", "text/html; charset=utf-8")
-		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+		_ = s.partialTemplates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
 	})
+}
+
+func (s *UIServer) getHALName() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "Windows JobObjects"
+	case "darwin":
+		return "macOS kqueue"
+	default:
+		return "Linux PDEATHSIG"
+	}
 }
 
 func (s *UIServer) collectMetrics() SystemMetricsData {

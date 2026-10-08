@@ -1092,3 +1092,7 @@ dialog.safety-modal::backdrop {
 .text-muted {
   color: var(--text-muted);
 }
+
+.text-secondary {
+  color: var(--text-secondary);
+}

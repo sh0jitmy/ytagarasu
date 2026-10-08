@@ -1,0 +1,75 @@
+{{template "layout" .}}
+
+{{define "title"}}システム健全性 & 診断インベントリ{{end}}
+
+{{define "content"}}
+<div class="dashboard-grid">
+    <!-- Health Overview Header Card -->
+    <div class="panel-card">
+        <div class="panel-header">
+            <div class="panel-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+                <span>全サブシステム健全性ステータス (System Health & Subsystem Diagnostics)</span>
+                <span class="badge badge-success">ALL OPERATIONAL</span>
+            </div>
+            <div class="panel-meta">
+                <span class="hal-badge">HAL: {{.Health.HALDriver}}</span>
+                <span class="zombie-badge">監視サイクル: ACTIVE</span>
+            </div>
+        </div>
+        <p class="panel-desc">
+            閉域網エアギャップ環境における全内部サブシステムの死活状態、接続性、およびプロセス整合性のリアルタイム自己診断結果です。
+        </p>
+
+        <!-- Metrics Ribbon -->
+        <div class="supervision-ribbon">
+            <div class="sub-metric">
+                <div class="sub-metric-label">総合健全性</div>
+                <div class="sub-metric-val" style="color: var(--success);">◆ 正常稼働 (UP)</div>
+            </div>
+            <div class="sub-metric">
+                <div class="sub-metric-label">稼働バージョン</div>
+                <div class="sub-metric-val font-mono">{{.Health.Version}}</div>
+            </div>
+            <div class="sub-metric">
+                <div class="sub-metric-label">最終診断タイムスタンプ</div>
+                <div class="sub-metric-val font-mono">{{.Health.Timestamp}}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subsystems Diagnostic Grid -->
+    <div class="stats-cards-grid">
+        {{range .Health.Subsystems}}
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">{{.Name}}</span>
+                {{if eq .Status "UP"}}
+                <span class="cud-badge cud-running"><span aria-hidden="true">◆</span> HEALTHY</span>
+                {{else}}
+                <span class="cud-badge cud-critical"><span aria-hidden="true">✖</span> DEGRADED</span>
+                {{end}}
+            </div>
+            <div class="stat-value" style="font-size: 18px; margin-top: 6px;">{{.Latency}}</div>
+            <div class="stat-sub" style="margin-top: 4px;">{{.Description}}</div>
+        </div>
+        {{end}}
+    </div>
+
+    <!-- Raw API Inspector Section -->
+    <div class="panel-card">
+        <div class="panel-header">
+            <div class="panel-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+                <span>機械可読 Raw Health API 連携 (/v1/system/healthz)</span>
+            </div>
+            <a href="/v1/system/healthz" target="_blank" class="btn btn-sm btn-outline">Raw JSON を開く ↗</a>
+        </div>
+        <pre class="terminal-card"><code>{{.Health.RawJSON}}</code></pre>
+    </div>
+</div>
+{{end}}

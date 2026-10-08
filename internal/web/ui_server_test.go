@@ -51,14 +51,14 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "OK")
 
-		// /v1/system/healthz (Navigation link)
+		// /v1/system/healthz (Machine API)
 		wHealth := httptest.NewRecorder()
 		reqHealth, _ := http.NewRequest(http.MethodGet, "/v1/system/healthz", nil)
 		server.Engine.ServeHTTP(wHealth, reqHealth)
 		assert.Equal(t, http.StatusOK, wHealth.Code)
 		assert.Contains(t, wHealth.Body.String(), "UP")
 
-		// /metrics (Prometheus endpoint)
+		// /metrics (Scraper API)
 		wMetrics := httptest.NewRecorder()
 		reqMetrics, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
 		server.Engine.ServeHTTP(wMetrics, reqMetrics)
@@ -66,7 +66,27 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, wMetrics.Body.String(), "go_goroutines")
 	}
 
-	// 2. Full Dashboard Page
+	// 2. Rich UI Navigation Pages (Human UI)
+	{
+		// /system/health (Rich Health Diagnostics UI)
+		wHealthUI := httptest.NewRecorder()
+		reqHealthUI, _ := http.NewRequest(http.MethodGet, "/system/health", nil)
+		server.Engine.ServeHTTP(wHealthUI, reqHealthUI)
+		assert.Equal(t, http.StatusOK, wHealthUI.Code)
+		assert.Contains(t, wHealthUI.Body.String(), "全サブシステム健全性ステータス")
+		assert.Contains(t, wHealthUI.Body.String(), "Core Supervisor Engine")
+		assert.Contains(t, wHealthUI.Body.String(), "HAL:")
+
+		// /system/metrics (Rich Prometheus Telemetry Explorer UI)
+		wMetricsUI := httptest.NewRecorder()
+		reqMetricsUI, _ := http.NewRequest(http.MethodGet, "/system/metrics", nil)
+		server.Engine.ServeHTTP(wMetricsUI, reqMetricsUI)
+		assert.Equal(t, http.StatusOK, wMetricsUI.Code)
+		assert.Contains(t, wMetricsUI.Body.String(), "Prometheus メトリクス・リアルタイムテレメトリ盤")
+		assert.Contains(t, wMetricsUI.Body.String(), "Active Goroutines")
+	}
+
+	// 3. Full Dashboard Page
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -78,7 +98,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "hx-get=\"/ui/components/system-metrics\"")
 	}
 
-	// 3. HTMX Supervision Panel Initial Rendering
+	// 4. HTMX Supervision Panel Initial Rendering
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/supervision-panel", nil)
@@ -92,7 +112,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "◆")
 	}
 
-	// 4. HTMX Supervision Actions (Stop -> State Persists on Next GET Polling)
+	// 5. HTMX Supervision Actions (Stop -> State Persists on Next GET Polling)
 	{
 		// Action: Stop process
 		wStop := httptest.NewRecorder()
@@ -123,7 +143,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, wStart.Body.String(), "RUNNING")
 	}
 
-	// 5. Dynamic Time Progression & CPU Oscillation Verification
+	// 6. Dynamic Time Progression & CPU Oscillation Verification
 	{
 		time.Sleep(10 * time.Millisecond)
 		status1 := server.SupervisionManager.CollectStatus()
@@ -136,7 +156,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Greater(t, status2.Processes[0].CPUPercent, 0.0)
 	}
 
-	// 6. HTMX System Metrics Partial
+	// 7. HTMX System Metrics Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/system-metrics", nil)
@@ -145,7 +165,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Active Goroutines")
 	}
 
-	// 7. HTMX Users Table Partial
+	// 8. HTMX Users Table Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/users-table", nil)
@@ -154,7 +174,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "登録ユーザー一覧")
 	}
 
-	// 8. HTMX Backups Panel Partial
+	// 9. HTMX Backups Panel Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/backup-panel", nil)
@@ -163,7 +183,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "データベースバックアップ")
 	}
 
-	// 9. Static CSS Asset
+	// 10. Static CSS Asset
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/static/css/dashboard.css", nil)

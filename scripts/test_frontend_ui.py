@@ -7,7 +7,9 @@
 ytagarasu Standalone HTMX Frontend UI & Value Verification E2E Test Suite.
 Verifies:
 1. CSS Class Completeness (Zero Missing CSS Classes)
-2. Health (/healthz & /v1/system/healthz) & Prometheus (/metrics) Endpoint Integrity
+2. Health & Prometheus Navigation:
+   - Rich Human UI (/system/health, /system/metrics)
+   - Machine Raw API (/healthz, /v1/system/healthz, /metrics)
 3. 1s High-Frequency Real-Time Polling Directive
 4. Live Stateful Supervision Panel (CUD Triple-Coding, HAL, Zombie Prevention)
 5. Dynamic Supervision Actions (Stop -> Polling Persistence -> Restart -> Start)
@@ -83,12 +85,24 @@ def test_frontend():
         "type": "Static Analysis / Lint",
         "query": "scripts/lint_css_classes.py",
         "expected": "0 missing CSS classes across all HTML templates",
-        "actual": "All 130+ template class references verified in dashboard.css",
+        "actual": "All template class references verified in dashboard.css",
         "status": "PASS"
     })
 
-    # Step 1: Health checks & Navigation endpoints integrity
-    log("Step 1: Checking Web Frontend health, Navigation endpoints (/v1/system/healthz, /metrics)...")
+    # Step 1: Health & Prometheus Navigation: Rich UI & Raw Machine APIs
+    log("Step 1: Checking Web Frontend Health & Metrics UI and Raw APIs...")
+    # Rich Human UI Views
+    health_ui_resp = http_get(f"{WEB_URL}/system/health")
+    assert "全サブシステム健全性ステータス" in health_ui_resp, "Missing title in /system/health"
+    assert "Core Supervisor Engine" in health_ui_resp, "Missing subsystem in /system/health"
+    assert "HAL:" in health_ui_resp, "Missing HAL badge in /system/health"
+
+    metrics_ui_resp = http_get(f"{WEB_URL}/system/metrics")
+    assert "Prometheus メトリクス・リアルタイムテレメトリ盤" in metrics_ui_resp, "Missing title in /system/metrics"
+    assert "Active Goroutines" in metrics_ui_resp, "Missing goroutines in /system/metrics"
+    assert "go_memstats_alloc_bytes" in metrics_ui_resp, "Missing prometheus key in /system/metrics"
+
+    # Machine Raw APIs
     web_health_resp = http_get(f"{WEB_URL}/healthz")
     assert "OK" in web_health_resp, f"Web health check failed: {web_health_resp}"
 
@@ -105,13 +119,13 @@ def test_frontend():
     assert "hx-get=\"/ui/components/supervision-panel\"" in dashboard_html, "Missing Supervision Panel polling trigger"
     assert "hx-get=\"/ui/components/system-metrics\"" in dashboard_html, "Missing System Metrics polling trigger"
 
-    log("✅ Frontend Server /healthz, /v1/system/healthz, /metrics are ONLINE & 1s polling active")
+    log("✅ Rich Human UIs (/system/health, /system/metrics) & Machine APIs (/v1/system/healthz, /metrics) ONLINE with 1s polling")
     verification_results.append({
-        "panel": "API Integrity & Navigation Links",
+        "panel": "Rich Human UI & Machine API Endpoints",
         "type": "HTTP GET",
-        "query": "/healthz, /v1/system/healthz, /metrics, /",
-        "expected": "HTTP 200 OK across all endpoints with 1s HTMX polling directive",
-        "actual": "Health API UP, Prometheus Metrics live, 1s polling active",
+        "query": "/system/health, /system/metrics, /v1/system/healthz, /metrics, /",
+        "expected": "HTTP 200 OK with Rich UI views and machine endpoints active",
+        "actual": "Rich Diagnostic UI, Prometheus Explorer, and Raw APIs verified",
         "status": "PASS"
     })
 
