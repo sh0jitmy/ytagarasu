@@ -228,11 +228,14 @@ func (s *UIServer) setupRoutes() {
 }
 
 func (s *UIServer) collectSupervisionData() SupervisionStatusData {
-	hal := "Linux PDEATHSIG"
-	if runtime.GOOS == "windows" {
+	var hal string
+	switch runtime.GOOS {
+	case "windows":
 		hal = "Windows JobObjects"
-	} else if runtime.GOOS == "darwin" {
+	case "darwin":
 		hal = "macOS kqueue"
+	default:
+		hal = "Linux PDEATHSIG"
 	}
 
 	procs := []SupervisedProcessInfo{
