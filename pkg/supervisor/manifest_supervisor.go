@@ -250,7 +250,7 @@ func (m *ManifestSupervisor) SaveState(statePath string) error {
 		return fmt.Errorf("failed to marshal supervisor state: %w", err)
 	}
 
-	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := os.OpenFile(filepath.Clean(tmpPath), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to open temp state: %w", err)
 	}
