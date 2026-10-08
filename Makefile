@@ -61,7 +61,11 @@ fmt: generate
 		golangci-lint run --fix ./...; \
 	fi
 
-lint: generate
+css-lint:
+	@echo "==> Running CSS class completeness linter..."
+	@python3 scripts/lint_css_classes.py
+
+lint: generate css-lint
 	@echo "==> Running golangci-lint..."
 	@golangci-lint run ./...
 

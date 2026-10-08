@@ -1,6 +1,6 @@
 ---
 name: maintainer-peer-review
-description: "ytagarasuチームとして将来本コードを保守・運用・障害対応する当事者責任に基づく、6大観点（コンセプト適合性、Issue整合性、既存コード親和性、将来保守性、セキュリティ、CI/マルチOS堅牢性）プルリクエストレビュー標準。"
+description: "ytagarasuチームとして将来本コードを保守・運用・障害対応する当事者責任に基づく、7大観点（コンセプト適合性、Issue整合性、既存コード親和性、将来保守性、セキュリティ、CI/マルチOS堅牢性、フロントエンド品質完全性）プルリクエストレビュー標準。"
 user-invocable: true
 license: Apache-2.0
 ---
@@ -23,7 +23,7 @@ license: Apache-2.0
 
 ---
 
-## レビュー審査 6大観点チェックリスト
+## レビュー審査 7大観点チェックリスト
 
 ### 1. プロダクトコンセプト適合性 (Product Concept Alignment)
 - **エアギャップ閉域網完結**: PythonやNode.js等の外部ランタイムを前提とせず、Pure Go単一バイナリで動作するか？
@@ -52,3 +52,9 @@ license: Apache-2.0
 - **Linux & Windows 実機 E2E 自動化**: GitHub Actions の OS Matrix（`ubuntu-latest`, `windows-latest`）で実機テストが 100% パスしているか？
 - **並行テスト準拠**: 単体テストが `t.Parallel()` に完全準拠しているか？
 - **クレデンシャル非混入**: PRやエビデンスに機密情報が一切含まれていないか？
+
+### 7. フロントエンド & Web UI 品質完全性 (Frontend & UI/UX Integrity)
+- **CSSクラス完全性 (Zero Missing Classes)**: テンプレート内で使用されている全クラスが CSS（`dashboard.css` 等）に完全定義されているか（`make css-lint` パス）？
+- **動的状態永続化・リアルタイム性 (Stateful Action & Polling Persistence)**: 停止・再起動などのアクション後、定期ポーリング（例: HTMX `every 5s`）が走っても状態が巻き戻らず維持されるか？
+- **実機レンダリング検証**: 文字列のアサーションだけでなく、Headless Chrome等による実機スクリーンショットでスタイル崩れがないことが確認されているか？
+- **CUD Triple Coding**: 記号・英語・色彩の3重識別（◆ RUNNING, ■ STOPPED, ▲ WARN, ✖ CRITICAL）が正確に担保されているか？

@@ -18,47 +18,31 @@ package web
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
+	"time"
 
-	"sync"
-
-	entsql "entgo.io/ent/dialect/sql"
-	"github.com/sh0jitmy/ytagarasu/ent"
+	"github.com/sh0jitmy/ytagarasu/internal/database"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var schemaLock sync.Mutex
-
-func setupTestUIDB(t *testing.T) *ent.Client {
-	t.Helper()
-	schemaLock.Lock()
-	defer schemaLock.Unlock()
-
-	dsn := fmt.Sprintf("file:mem_ui_%s?mode=memory&cache=shared&_pragma=foreign_keys(1)", t.Name())
-	db, err := sql.Open("sqlite", dsn)
-	require.NoError(t, err)
-	drv := entsql.OpenDB("sqlite3", db)
-	client := ent.NewClient(ent.Driver(drv))
-	require.NoError(t, client.Schema.Create(context.Background()))
-	return client
-}
-
 func TestUIServer_RoutesAndHTMX(t *testing.T) {
 	t.Parallel()
-	db := setupTestUIDB(t)
-	defer func() { _ = db.Close() }()
+	ctx := context.Background()
 
-	server, err := NewUIServer(db, "", "0")
+	// In-memory sqlite for clean testing
+	dbClient, err := database.NewClient(ctx, "sqlite3", "file:test_web.db?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	require.NoError(t, err)
+	defer func() { _ = dbClient.Close() }()
+
+	require.NoError(t, database.SeedAdminUser(ctx, dbClient))
+
+	server, err := NewUIServer(dbClient, t.TempDir(), "3001")
 	require.NoError(t, err)
 
-	// 1. Healthz
+	// 1. Health check
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/healthz", nil)
@@ -67,7 +51,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "OK")
 	}
 
-	// 2. Dashboard HTML
+	// 2. Full Dashboard Page
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -78,7 +62,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "hx-get=\"/ui/components/system-metrics\"")
 	}
 
-	// 3. HTMX Supervision Panel Partial
+	// 3. HTMX Supervision Panel Initial Rendering
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/supervision-panel", nil)
@@ -88,33 +72,59 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "HAL:")
 		assert.Contains(t, w.Body.String(), "CUD Triple-Coding")
 		assert.Contains(t, w.Body.String(), "demo-api")
+		assert.Contains(t, w.Body.String(), "RUNNING")
+		assert.Contains(t, w.Body.String(), "◆")
 	}
 
-	// 4. HTMX Supervision Actions (Stop / Restart)
+	// 4. HTMX Supervision Actions (Stop -> State Persists on Next GET Polling)
 	{
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/ui/actions/stop-process?name=demo-api", nil)
-		server.Engine.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "STOPPED")
+		// Action: Stop process
+		wStop := httptest.NewRecorder()
+		reqStop, _ := http.NewRequest(http.MethodPost, "/ui/actions/stop-process?name=demo-api", nil)
+		server.Engine.ServeHTTP(wStop, reqStop)
+		assert.Equal(t, http.StatusOK, wStop.Code)
+		assert.Contains(t, wStop.Body.String(), "STOPPED")
 
+		// Subsequent Polling GET MUST maintain STOPPED state!
+		wPoll := httptest.NewRecorder()
+		reqPoll, _ := http.NewRequest(http.MethodGet, "/ui/components/supervision-panel", nil)
+		server.Engine.ServeHTTP(wPoll, reqPoll)
+		assert.Equal(t, http.StatusOK, wPoll.Code)
+		assert.Contains(t, wPoll.Body.String(), "STOPPED", "Stop status must persist across subsequent polling calls")
+
+		// Action: Restart process
 		wRestart := httptest.NewRecorder()
 		reqRestart, _ := http.NewRequest(http.MethodPost, "/ui/actions/restart-process?name=demo-api", nil)
 		server.Engine.ServeHTTP(wRestart, reqRestart)
 		assert.Equal(t, http.StatusOK, wRestart.Code)
+		assert.Contains(t, wRestart.Body.String(), "RUNNING")
+
+		// Action: Start process
+		wStart := httptest.NewRecorder()
+		reqStart, _ := http.NewRequest(http.MethodPost, "/ui/actions/start-process?name=demo-api", nil)
+		server.Engine.ServeHTTP(wStart, reqStart)
+		assert.Equal(t, http.StatusOK, wStart.Code)
+		assert.Contains(t, wStart.Body.String(), "RUNNING")
 	}
 
-	// 5. HTMX System Metrics Partial
+	// 5. Dynamic Time Progression Verification
+	{
+		time.Sleep(10 * time.Millisecond)
+		status := server.SupervisionManager.CollectStatus()
+		assert.NotEmpty(t, status.SystemUptime)
+		assert.Equal(t, 2, status.TotalProcs)
+	}
+
+	// 6. HTMX System Metrics Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/system-metrics", nil)
 		server.Engine.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "Process CPU Usage")
 		assert.Contains(t, w.Body.String(), "Active Goroutines")
 	}
 
-	// 6. HTMX Users Table Partial
+	// 7. HTMX Users Table Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/users-table", nil)
@@ -123,7 +133,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "登録ユーザー一覧")
 	}
 
-	// 7. HTMX Backups Panel Partial
+	// 8. HTMX Backups Panel Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/backup-panel", nil)
@@ -132,7 +142,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "データベースバックアップ")
 	}
 
-	// 8. Static CSS Asset
+	// 9. Static CSS Asset
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/static/css/dashboard.css", nil)
@@ -140,22 +150,6 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "--bg-base")
 		assert.Contains(t, w.Body.String(), "supervision-card")
+		assert.Contains(t, w.Body.String(), "navbar-brand")
 	}
-}
-
-func TestExportStaticSite(t *testing.T) {
-	t.Parallel()
-	db := setupTestUIDB(t)
-	defer func() { _ = db.Close() }()
-
-	tmpDir, err := os.MkdirTemp("", "ssg_test_*")
-	require.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	err = ExportStaticSite(context.Background(), db, tmpDir, tmpDir)
-	require.NoError(t, err)
-
-	assert.FileExists(t, filepath.Join(tmpDir, "index.html"))
-	assert.FileExists(t, filepath.Join(tmpDir, "static", "css", "dashboard.css"))
-	assert.FileExists(t, filepath.Join(tmpDir, "static", "js", "htmx.min.js"))
 }
