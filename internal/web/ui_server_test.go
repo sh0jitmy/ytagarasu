@@ -42,13 +42,28 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 	server, err := NewUIServer(dbClient, t.TempDir(), "3001")
 	require.NoError(t, err)
 
-	// 1. Health check
+	// 1. Health check endpoints
 	{
+		// /healthz
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/healthz", nil)
 		server.Engine.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "OK")
+
+		// /v1/system/healthz (Navigation link)
+		wHealth := httptest.NewRecorder()
+		reqHealth, _ := http.NewRequest(http.MethodGet, "/v1/system/healthz", nil)
+		server.Engine.ServeHTTP(wHealth, reqHealth)
+		assert.Equal(t, http.StatusOK, wHealth.Code)
+		assert.Contains(t, wHealth.Body.String(), "UP")
+
+		// /metrics (Prometheus endpoint)
+		wMetrics := httptest.NewRecorder()
+		reqMetrics, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
+		server.Engine.ServeHTTP(wMetrics, reqMetrics)
+		assert.Equal(t, http.StatusOK, wMetrics.Code)
+		assert.Contains(t, wMetrics.Body.String(), "go_goroutines")
 	}
 
 	// 2. Full Dashboard Page
@@ -59,6 +74,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "ytagarasu Tactical Dashboard")
 		assert.Contains(t, w.Body.String(), "hx-get=\"/ui/components/supervision-panel\"")
+		assert.Contains(t, w.Body.String(), "hx-trigger=\"every 1s\"", "Expected high-frequency 1s polling")
 		assert.Contains(t, w.Body.String(), "hx-get=\"/ui/components/system-metrics\"")
 	}
 
@@ -107,12 +123,17 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, wStart.Body.String(), "RUNNING")
 	}
 
-	// 5. Dynamic Time Progression Verification
+	// 5. Dynamic Time Progression & CPU Oscillation Verification
 	{
 		time.Sleep(10 * time.Millisecond)
-		status := server.SupervisionManager.CollectStatus()
-		assert.NotEmpty(t, status.SystemUptime)
-		assert.Equal(t, 2, status.TotalProcs)
+		status1 := server.SupervisionManager.CollectStatus()
+		time.Sleep(20 * time.Millisecond)
+		status2 := server.SupervisionManager.CollectStatus()
+
+		assert.NotEmpty(t, status1.SystemUptime)
+		assert.Equal(t, 2, status1.TotalProcs)
+		assert.Greater(t, status1.Processes[0].CPUPercent, 0.0)
+		assert.Greater(t, status2.Processes[0].CPUPercent, 0.0)
 	}
 
 	// 6. HTMX System Metrics Partial

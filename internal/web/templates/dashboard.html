@@ -4,19 +4,19 @@
 
 {{define "content"}}
 <div class="dashboard-grid">
-    <!-- Top Supervision Panel (Polled via HTMX every 5s) -->
-    <section class="supervision-section" id="supervision-container" hx-get="/ui/components/supervision-panel" hx-trigger="every 5s" hx-swap="innerHTML">
+    <!-- Top Supervision Panel (Polled via HTMX every 1s for real-time monitoring) -->
+    <section class="supervision-section" id="supervision-container" hx-get="/ui/components/supervision-panel" hx-trigger="every 1s" hx-swap="innerHTML">
         {{template "supervision_panel" .}}
     </section>
 
-    <!-- System Resource Metrics (Polled via HTMX every 5s) -->
-    <section class="metrics-section" id="system-metrics-container" hx-get="/ui/components/system-metrics" hx-trigger="every 5s" hx-swap="innerHTML">
+    <!-- System Resource Metrics (Polled via HTMX every 1s) -->
+    <section class="metrics-section" id="system-metrics-container" hx-get="/ui/components/system-metrics" hx-trigger="every 1s" hx-swap="innerHTML">
         {{template "system_metrics" .}}
     </section>
 
     <!-- Main 2-column Grid: Users Table & Backups Panel -->
     <div class="two-column-grid">
-        <section class="card-section" id="users-table-container" hx-get="/ui/components/users-table" hx-trigger="every 10s" hx-swap="innerHTML">
+        <section class="card-section" id="users-table-container" hx-get="/ui/components/users-table" hx-trigger="every 5s" hx-swap="innerHTML">
             {{template "users_table" .}}
         </section>
 
