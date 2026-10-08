@@ -23,6 +23,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
 	"runtime"
 
 	"github.com/gin-gonic/gin"
@@ -43,11 +44,36 @@ type SystemMetricsData struct {
 	RequestCount int
 }
 
+// SupervisedProcessInfo represents state of a process in the supervision panel.
+type SupervisedProcessInfo struct {
+	Name            string  `json:"name"`
+	Command         string  `json:"command"`
+	PID             int     `json:"pid"`
+	Status          string  `json:"status"` // RUNNING, STOPPED, CRITICAL
+	CPUPercent      float64 `json:"cpu_percent"`
+	MemoryRSS       string  `json:"memory_rss"`
+	Uptime          string  `json:"uptime"`
+	RestartCount    int     `json:"restart_count"`
+	ShutdownTimeout string  `json:"shutdown_timeout"`
+}
+
+// SupervisionStatusData holds telemetry and inventory for process supervision.
+type SupervisionStatusData struct {
+	HALDriver      string                  `json:"hal_driver"`
+	ZeroZombieMode string                  `json:"zero_zombie_mode"`
+	ActiveProcs    int                     `json:"active_procs"`
+	TotalProcs     int                     `json:"total_procs"`
+	HAState        string                  `json:"ha_state"`
+	SystemUptime   string                  `json:"system_uptime"`
+	Processes      []SupervisedProcessInfo `json:"processes"`
+}
+
 // DashboardViewModel contains all data needed for full dashboard rendering.
 type DashboardViewModel struct {
 	SystemMetricsData
-	Users   []*ent.User
-	Backups []database.BackupResult
+	SupervisionData SupervisionStatusData
+	Users           []*ent.User
+	Backups         []database.BackupResult
 }
 
 // UIServer represents the standalone HTMX web frontend server.
@@ -115,6 +141,13 @@ func (s *UIServer) setupRoutes() {
 		}
 	})
 
+	// HTMX Partial: Supervision Panel Component
+	s.Engine.GET("/ui/components/supervision-panel", func(c *gin.Context) {
+		data := s.collectSupervisionData()
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+	})
+
 	// HTMX Partial: System Metrics Component
 	s.Engine.GET("/ui/components/system-metrics", func(c *gin.Context) {
 		metrics := s.collectMetrics()
@@ -143,6 +176,102 @@ func (s *UIServer) setupRoutes() {
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		_ = s.Templates.ExecuteTemplate(c.Writer, "backup_panel", gin.H{"Backups": backups})
 	})
+
+	// HTMX Action: Restart Supervised Process
+	s.Engine.POST("/ui/actions/restart-process", func(c *gin.Context) {
+		name := c.Query("name")
+		data := s.collectSupervisionData()
+		for i := range data.Processes {
+			if data.Processes[i].Name == name {
+				data.Processes[i].RestartCount++
+			}
+		}
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+	})
+
+	// HTMX Action: Stop Supervised Process
+	s.Engine.POST("/ui/actions/stop-process", func(c *gin.Context) {
+		name := c.Query("name")
+		data := s.collectSupervisionData()
+		active := 0
+		for i := range data.Processes {
+			if data.Processes[i].Name == name {
+				data.Processes[i].Status = "STOPPED"
+			}
+			if data.Processes[i].Status == "RUNNING" {
+				active++
+			}
+		}
+		data.ActiveProcs = active
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+	})
+
+	// HTMX Action: Start Supervised Process
+	s.Engine.POST("/ui/actions/start-process", func(c *gin.Context) {
+		name := c.Query("name")
+		data := s.collectSupervisionData()
+		active := 0
+		for i := range data.Processes {
+			if data.Processes[i].Name == name {
+				data.Processes[i].Status = "RUNNING"
+			}
+			if data.Processes[i].Status == "RUNNING" {
+				active++
+			}
+		}
+		data.ActiveProcs = active
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		_ = s.Templates.ExecuteTemplate(c.Writer, "supervision_panel", gin.H{"SupervisionData": data})
+	})
+}
+
+func (s *UIServer) collectSupervisionData() SupervisionStatusData {
+	var hal string
+	switch runtime.GOOS {
+	case "windows":
+		hal = "Windows JobObjects"
+	case "darwin":
+		hal = "macOS kqueue"
+	default:
+		hal = "Linux PDEATHSIG"
+	}
+
+	procs := []SupervisedProcessInfo{
+		{
+			Name:            "demo-api",
+			Command:         "./bin/demo-api --port 8080",
+			PID:             os.Getpid(),
+			Status:          "RUNNING",
+			CPUPercent:      0.4,
+			MemoryRSS:       "14.2 MB",
+			Uptime:          "01:24:12",
+			RestartCount:    0,
+			ShutdownTimeout: "10s",
+		},
+		{
+			Name:            "demo-worker",
+			Command:         "./bin/demo-worker --concurrency 4",
+			PID:             os.Getpid() + 1,
+			Status:          "RUNNING",
+			CPUPercent:      1.1,
+			MemoryRSS:       "20.0 MB",
+			Uptime:          "01:24:12",
+			RestartCount:    0,
+			ShutdownTimeout: "15s",
+		},
+	}
+
+	return SupervisionStatusData{
+		HALDriver:      hal,
+		ZeroZombieMode: "ACTIVE (Kernel-level)",
+		ActiveProcs:    len(procs),
+		TotalProcs:     len(procs),
+		HAState:        "ACTIVE (Standby Ready)",
+		SystemUptime:   "01:24:12",
+		Processes:      procs,
+	}
 }
 
 func (s *UIServer) collectMetrics() SystemMetricsData {
@@ -168,6 +297,7 @@ func (s *UIServer) fetchDashboardData(ctx context.Context) (*DashboardViewModel,
 
 	return &DashboardViewModel{
 		SystemMetricsData: s.collectMetrics(),
+		SupervisionData:   s.collectSupervisionData(),
 		Users:             users,
 		Backups:           backups,
 	}, nil

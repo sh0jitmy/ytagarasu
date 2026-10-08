@@ -38,7 +38,7 @@ func main() {
 		atomic.AddUint64(&reqCount, 1)
 		uptime := time.Since(startTime).Round(time.Second)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<!DOCTYPE html>
+		_, _ = fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
   <title>ytagarasu On-Premise Demo API</title>
@@ -75,7 +75,7 @@ func main() {
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","pid":%d,"uptime":"%s"}`+"\n", pid, time.Since(startTime).Round(time.Second))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","pid":%d,"uptime":"%s"}`+"\n", pid, time.Since(startTime).Round(time.Second))
 	})
 
 	http.HandleFunc("/crash", func(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +85,11 @@ func main() {
 			os.Exit(1)
 		}()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintln(w, "<h3>Process killed! Reloading in 2 seconds...</h3><script>setTimeout(() => window.location.href='/', 2000);</script>")
+		_, _ = fmt.Fprintln(w, "<h3>Process killed! Reloading in 2 seconds...</h3><script>setTimeout(() => window.location.href='/', 2000);</script>")
 	})
 
 	log.Printf("[DEMO-API] Server started on :%d (PID: %d)", *port, pid)
+	//nolint:gosec // Demo server without timeouts is intentional
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

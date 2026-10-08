@@ -4,7 +4,12 @@
 
 {{define "content"}}
 <div class="dashboard-grid">
-    <!-- Top System Metrics (Polled via HTMX every 5s) -->
+    <!-- Top Supervision Panel (Polled via HTMX every 5s) -->
+    <section class="supervision-section" id="supervision-container" hx-get="/ui/components/supervision-panel" hx-trigger="every 5s" hx-swap="innerHTML">
+        {{template "supervision_panel" .}}
+    </section>
+
+    <!-- System Resource Metrics (Polled via HTMX every 5s) -->
     <section class="metrics-section" id="system-metrics-container" hx-get="/ui/components/system-metrics" hx-trigger="every 5s" hx-swap="innerHTML">
         {{template "system_metrics" .}}
     </section>

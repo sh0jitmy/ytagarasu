@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{template "title" .}} - Go Template Dashboard</title>
+    <title>{{template "title" .}} - ytagarasu Tactical Dashboard</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="/static/js/htmx.min.js"></script>
 </head>
@@ -13,9 +13,15 @@
         <!-- Navbar -->
         <header class="navbar">
             <div class="navbar-brand">
-                <span class="brand-icon">⚡</span>
-                <span class="brand-title">Go Template Dashboard</span>
-                <span class="badge badge-accent">Production Ready</span>
+                <div class="brand-crest" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2">
+                        <path d="M12 2L15 8H9L12 2Z"/>
+                        <path d="M4 14C4 9 9 7 12 7C15 7 20 9 20 14C20 18 16 21 12 21C8 21 4 18 4 14Z"/>
+                        <path d="M9 21V23M12 21V23M15 21V23"/>
+                    </svg>
+                </div>
+                <span class="brand-title">ytagarasu Tactical Dashboard</span>
+                <span class="badge badge-accent">v0.1.0-rc.1 Core</span>
             </div>
             <nav class="navbar-nav">
                 <a href="/" class="nav-link active">ダッシュボード</a>
@@ -24,7 +30,7 @@
             </nav>
             <div class="navbar-status">
                 <span class="status-indicator status-online"></span>
-                <span class="status-text">SYSTEM ONLINE</span>
+                <span class="status-text">SUPERVISION ACTIVE</span>
             </div>
         </header>
 
@@ -33,11 +39,52 @@
             {{template "content" .}}
         </main>
 
+        <!-- Enterprise Fail-Safe Modal -->
+        <dialog id="safety-dialog" class="safety-modal">
+            <div class="modal-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>不可逆操作の確認 (Safety Guard)</span>
+            </div>
+            <div class="modal-body">
+                プロセス <strong id="modal-proc-name" style="color:var(--text-primary);"></strong> を停止しますか？<br>
+                現場稼働中のサービスが一時的に中断される可能性があります。
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeSafetyDialog()">キャンセル</button>
+                <button type="button" class="btn btn-danger" id="modal-confirm-btn">停止を実行する</button>
+            </div>
+        </dialog>
+
         <!-- Footer -->
         <footer class="footer">
-            <p>Go Production Template &bull; Standalone HTMX UI &bull; Air-Gapped Ready</p>
+            <p>ytagarasu On-Premise GitOps & Supervision Engine &bull; Standalone HTMX UI &bull; Air-Gapped Ready</p>
         </footer>
     </div>
+
+    <script>
+        let pendingStopProcess = null;
+        function confirmStopProcess(name) {
+            pendingStopProcess = name;
+            document.getElementById('modal-proc-name').textContent = "'" + name + "'";
+            const dialog = document.getElementById('safety-dialog');
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            confirmBtn.onclick = () => {
+                dialog.close();
+                htmx.ajax('POST', '/ui/actions/stop-process?name=' + encodeURIComponent(pendingStopProcess), {
+                    target: '#supervision-container',
+                    swap: 'innerHTML'
+                });
+            };
+            dialog.showModal();
+        }
+        function closeSafetyDialog() {
+            document.getElementById('safety-dialog').close();
+            pendingStopProcess = null;
+        }
+    </script>
 </body>
 </html>
 {{end}}

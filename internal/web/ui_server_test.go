@@ -73,11 +73,38 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/", nil)
 		server.Engine.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "Go Template Dashboard")
+		assert.Contains(t, w.Body.String(), "ytagarasu Tactical Dashboard")
+		assert.Contains(t, w.Body.String(), "hx-get=\"/ui/components/supervision-panel\"")
 		assert.Contains(t, w.Body.String(), "hx-get=\"/ui/components/system-metrics\"")
 	}
 
-	// 3. HTMX System Metrics Partial
+	// 3. HTMX Supervision Panel Partial
+	{
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/ui/components/supervision-panel", nil)
+		server.Engine.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "常駐プロセス看取り・運用制御盤")
+		assert.Contains(t, w.Body.String(), "HAL:")
+		assert.Contains(t, w.Body.String(), "CUD Triple-Coding")
+		assert.Contains(t, w.Body.String(), "demo-api")
+	}
+
+	// 4. HTMX Supervision Actions (Stop / Restart)
+	{
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/ui/actions/stop-process?name=demo-api", nil)
+		server.Engine.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "STOPPED")
+
+		wRestart := httptest.NewRecorder()
+		reqRestart, _ := http.NewRequest(http.MethodPost, "/ui/actions/restart-process?name=demo-api", nil)
+		server.Engine.ServeHTTP(wRestart, reqRestart)
+		assert.Equal(t, http.StatusOK, wRestart.Code)
+	}
+
+	// 5. HTMX System Metrics Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/system-metrics", nil)
@@ -87,7 +114,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Active Goroutines")
 	}
 
-	// 4. HTMX Users Table Partial
+	// 6. HTMX Users Table Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/users-table", nil)
@@ -96,7 +123,7 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "登録ユーザー一覧")
 	}
 
-	// 5. HTMX Backups Panel Partial
+	// 7. HTMX Backups Panel Partial
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/ui/components/backup-panel", nil)
@@ -105,13 +132,14 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "データベースバックアップ")
 	}
 
-	// 6. Static CSS Asset
+	// 8. Static CSS Asset
 	{
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest(http.MethodGet, "/static/css/dashboard.css", nil)
 		server.Engine.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "--bg-base")
+		assert.Contains(t, w.Body.String(), "supervision-card")
 	}
 }
 
