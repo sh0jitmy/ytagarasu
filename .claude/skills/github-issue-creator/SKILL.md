@@ -36,3 +36,6 @@ metadata:
 ```bash
 gh issue create --title "[FEATURE]: タイトル" --body "..." --label "enhancement"
 ```
+
+## 4. 状態監視画面の更新頻度原則 (Real-Time State Polling Standard)
+- プロセス看取り、システムリソース、死活監視等、**状態監視（State Monitoring）を行う画面・コンポーネントの画面更新頻度は基本1秒（`1.0s` / HTMX `every 1s`）を徹底**すること。
