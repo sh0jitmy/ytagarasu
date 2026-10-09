@@ -1,0 +1,11 @@
+{{template "layout" .}}
+
+{{define "title"}}システム健全性 & 診断インベントリ{{end}}
+
+{{define "content"}}
+<div class="dashboard-grid">
+    <div id="health-container" hx-get="/ui/components/health-panel" hx-trigger="every 1s" hx-swap="innerHTML">
+        {{template "health_panel" .}}
+    </div>
+</div>
+{{end}}
