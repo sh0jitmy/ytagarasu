@@ -183,6 +183,28 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "データベースバックアップ")
 	}
 
+
+	// 11. HTMX Health Panel Partial
+	{
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/ui/components/health-panel", nil)
+		server.Engine.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "LIVE HEARTBEAT")
+		assert.Contains(t, w.Body.String(), "診断サイクル:")
+		assert.Contains(t, w.Body.String(), "Core Supervisor Engine")
+	}
+
+	// 12. HTMX Metrics Panel Partial
+	{
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/ui/components/metrics-panel", nil)
+		server.Engine.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "1s LIVE POLLING")
+		assert.Contains(t, w.Body.String(), "Active Goroutines")
+	}
+
 	// 10. Static CSS Asset
 	{
 		w := httptest.NewRecorder()

@@ -91,16 +91,27 @@ def test_frontend():
 
     # Step 1: Health & Prometheus Navigation: Rich UI & Raw Machine APIs
     log("Step 1: Checking Web Frontend Health & Metrics UI and Raw APIs...")
-    # Rich Human UI Views
+# Rich Human UI Views & 1s Polling Partials
     health_ui_resp = http_get(f"{WEB_URL}/system/health")
     assert "全サブシステム健全性ステータス" in health_ui_resp, "Missing title in /system/health"
     assert "Core Supervisor Engine" in health_ui_resp, "Missing subsystem in /system/health"
     assert "HAL:" in health_ui_resp, "Missing HAL badge in /system/health"
+    assert "hx-get=\"/ui/components/health-panel\"" in health_ui_resp, "Missing 1s polling hx-get in /system/health"
+    assert "hx-trigger=\"every 1s\"" in health_ui_resp, "Missing 1s trigger in /system/health"
+
+    health_partial = http_get(f"{WEB_URL}/ui/components/health-panel")
+    assert "LIVE HEARTBEAT" in health_partial, "Missing LIVE HEARTBEAT badge in health partial"
+    assert "診断サイクル:" in health_partial, "Missing cycle counter in health partial"
 
     metrics_ui_resp = http_get(f"{WEB_URL}/system/metrics")
     assert "Prometheus メトリクス・リアルタイムテレメトリ盤" in metrics_ui_resp, "Missing title in /system/metrics"
     assert "Active Goroutines" in metrics_ui_resp, "Missing goroutines in /system/metrics"
     assert "go_memstats_alloc_bytes" in metrics_ui_resp, "Missing prometheus key in /system/metrics"
+    assert "hx-get=\"/ui/components/metrics-panel\"" in metrics_ui_resp, "Missing 1s polling hx-get in /system/metrics"
+    assert "hx-trigger=\"every 1s\"" in metrics_ui_resp, "Missing 1s trigger in /system/metrics"
+
+    metrics_partial = http_get(f"{WEB_URL}/ui/components/metrics-panel")
+    assert "1s LIVE POLLING" in metrics_partial, "Missing 1s LIVE POLLING in metrics partial"
 
     # Machine Raw APIs
     web_health_resp = http_get(f"{WEB_URL}/healthz")
