@@ -183,7 +183,6 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "データベースバックアップ")
 	}
 
-
 	// 11. HTMX Health Panel Partial
 	{
 		w := httptest.NewRecorder()

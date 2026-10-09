@@ -1,6 +1,6 @@
 module github.com/sh0jitmy/ytagarasu
 
-go 1.26.6
+go 1.26.9
 
 require (
 	entgo.io/ent v0.14.6

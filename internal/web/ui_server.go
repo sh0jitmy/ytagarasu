@@ -488,13 +488,12 @@ func (s *UIServer) getHALName() string {
 	}
 }
 
-
 func (s *UIServer) collectHealthData() *HealthViewModel {
 	cycle := atomic.AddUint64(&s.healthCheckCycle, 1)
 	hal := s.getHALName()
 	now := time.Now()
 	// Microsecond jitter (0.00 - 0.99) to reflect active subsystem response times
-	micro := float64((now.UnixNano() / 1000) % 1000) / 1000.0
+	micro := float64((now.UnixNano()/1000)%1000) / 1000.0
 
 	coreLat := fmt.Sprintf("%.2f ms", 0.18+micro*0.12)
 	dbLat := fmt.Sprintf("%.2f ms", 0.35+micro*0.18)
