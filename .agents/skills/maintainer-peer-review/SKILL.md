@@ -55,6 +55,7 @@ license: Apache-2.0
 
 ### 7. フロントエンド & Web UI 品質完全性 (Frontend & UI/UX Integrity)
 - **CSSクラス完全性 (Zero Missing Classes)**: テンプレート内で使用されている全クラスが CSS（`dashboard.css` 等）に完全定義されているか（`make css-lint` パス）？
-- **動的状態永続化・リアルタイム性 (Stateful Action & Polling Persistence)**: 停止・再起動などのアクション後、定期ポーリング（例: HTMX `every 5s`）が走っても状態が巻き戻らず維持されるか？
+- **状態監視画面の更新頻度原則 (1s Real-Time Polling)**: プロセス監視やシステムリソース等の状態監視を行う画面・コンポーネントの更新頻度が基本1秒（`1.0s` / HTMX `every 1s`）に設定されているか？
+- **動的状態永続化 (Stateful Action & Polling Persistence)**: 停止・再起動などのアクション後、1秒定期ポーリング（HTMX `every 1s`）が走っても状態が巻き戻らず維持されるか？
 - **実機レンダリング検証**: 文字列のアサーションだけでなく、Headless Chrome等による実機スクリーンショットでスタイル崩れがないことが確認されているか？
 - **CUD Triple Coding**: 記号・英語・色彩の3重識別（◆ RUNNING, ■ STOPPED, ▲ WARN, ✖ CRITICAL）が正確に担保されているか？
