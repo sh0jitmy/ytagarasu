@@ -46,6 +46,8 @@ internal/web/
 ## 3. HTMXの実装パターンと画面更新頻度原則
 - **状態監視画面の更新頻度原則 (1s Real-Time Polling Standard)**:
   プロセス看取り、システムリソース、死活監視等、**状態監視を行う画面・コンポーネントの画面更新頻度は基本1秒（`every 1s`）を徹底**する。5秒等の緩慢なポーリングは現場の障害看取りやリアルタイム検知体験を損なうため禁止。
+- **生きた状態監視の視覚化原則 (Living System & Anti-Stall)**:
+  ヘルス診断やメトリクス画面が静止・フリーズして見えないよう、(1) 心拍パルス（Heartbeat LED）、(2) 動的診断サイクル通番（毎秒インクリメント）、(3) 精密ミリ秒タイムスタンプの進行、(4) 実測動的レイテンシ・ジッターの4重演出を徹底する。
 - **定期ポーリング (System Metrics / State Supervision)**:
   `hx-get="/ui/components/system-metrics" hx-trigger="load, every 1s" hx-swap="innerHTML"`
 - **ユーザー操作によるインプレース更新 (Create Backup)**:

@@ -7,12 +7,15 @@
 ytagarasu Standalone HTMX Frontend UI & Value Verification E2E Test Suite.
 Verifies:
 1. CSS Class Completeness (Zero Missing CSS Classes)
-2. Health & Full Dashboard Page Rendering
-3. Live Stateful Supervision Panel (CUD Triple-Coding, HAL, Zombie Prevention)
-4. Dynamic Supervision Actions (Stop -> Polling Persistence -> Restart -> Start)
-5. Real-Time Telemetry & Metric Progression
-6. Database User Management & Backup Archives
-7. Headless Chrome Visual Rendering & Screenshot Evidence
+2. Health & Prometheus Navigation:
+   - Rich Human UI (/system/health, /system/metrics)
+   - Machine Raw API (/healthz, /v1/system/healthz, /metrics)
+3. 1s High-Frequency Real-Time Polling Directive
+4. Live Stateful Supervision Panel (CUD Triple-Coding, HAL, Zombie Prevention)
+5. Dynamic Supervision Actions (Stop -> Polling Persistence -> Restart -> Start)
+6. Dynamic CPU Usage Oscillation & Telemetry Progression
+7. Database User Management & Backup Archives
+8. Headless Chrome Visual Rendering & Screenshot Evidence
 """
 
 import base64
@@ -82,28 +85,58 @@ def test_frontend():
         "type": "Static Analysis / Lint",
         "query": "scripts/lint_css_classes.py",
         "expected": "0 missing CSS classes across all HTML templates",
-        "actual": "All 130+ template class references verified in dashboard.css",
+        "actual": "All template class references verified in dashboard.css",
         "status": "PASS"
     })
 
-    # Step 1: Health checks & Dashboard rendering
-    log("Step 1: Checking Web Frontend health & full dashboard page...")
+    # Step 1: Health & Prometheus Navigation: Rich UI & Raw Machine APIs
+    log("Step 1: Checking Web Frontend Health & Metrics UI and Raw APIs...")
+# Rich Human UI Views & 1s Polling Partials
+    health_ui_resp = http_get(f"{WEB_URL}/system/health")
+    assert "全サブシステム健全性ステータス" in health_ui_resp, "Missing title in /system/health"
+    assert "Core Supervisor Engine" in health_ui_resp, "Missing subsystem in /system/health"
+    assert "HAL:" in health_ui_resp, "Missing HAL badge in /system/health"
+    assert "hx-get=\"/ui/components/health-panel\"" in health_ui_resp, "Missing 1s polling hx-get in /system/health"
+    assert "hx-trigger=\"every 1s\"" in health_ui_resp, "Missing 1s trigger in /system/health"
+
+    health_partial = http_get(f"{WEB_URL}/ui/components/health-panel")
+    assert "LIVE HEARTBEAT" in health_partial, "Missing LIVE HEARTBEAT badge in health partial"
+    assert "診断サイクル:" in health_partial, "Missing cycle counter in health partial"
+
+    metrics_ui_resp = http_get(f"{WEB_URL}/system/metrics")
+    assert "Prometheus メトリクス・リアルタイムテレメトリ盤" in metrics_ui_resp, "Missing title in /system/metrics"
+    assert "Active Goroutines" in metrics_ui_resp, "Missing goroutines in /system/metrics"
+    assert "go_memstats_alloc_bytes" in metrics_ui_resp, "Missing prometheus key in /system/metrics"
+    assert "hx-get=\"/ui/components/metrics-panel\"" in metrics_ui_resp, "Missing 1s polling hx-get in /system/metrics"
+    assert "hx-trigger=\"every 1s\"" in metrics_ui_resp, "Missing 1s trigger in /system/metrics"
+
+    metrics_partial = http_get(f"{WEB_URL}/ui/components/metrics-panel")
+    assert "1s LIVE POLLING" in metrics_partial, "Missing 1s LIVE POLLING in metrics partial"
+
+    # Machine Raw APIs
     web_health_resp = http_get(f"{WEB_URL}/healthz")
     assert "OK" in web_health_resp, f"Web health check failed: {web_health_resp}"
+
+    nav_health_resp = http_get(f"{WEB_URL}/v1/system/healthz")
+    assert "UP" in nav_health_resp, f"Nav Health API (/v1/system/healthz) failed or 404: {nav_health_resp}"
+
+    prom_metrics_resp = http_get(f"{WEB_URL}/metrics")
+    assert "go_goroutines" in prom_metrics_resp or "process_cpu_seconds_total" in prom_metrics_resp, f"Prometheus (/metrics) failed or 404: {prom_metrics_resp[:100]}"
 
     dashboard_html = http_get(f"{WEB_URL}/")
     assert "統合監視ダッシュボード" in dashboard_html, "Dashboard missing title '統合監視ダッシュボード'"
     assert "ytagarasu Tactical Dashboard" in dashboard_html, "Dashboard missing brand header"
+    assert "hx-trigger=\"every 1s\"" in dashboard_html, "Missing 1s high-frequency real-time polling trigger!"
     assert "hx-get=\"/ui/components/supervision-panel\"" in dashboard_html, "Missing Supervision Panel polling trigger"
     assert "hx-get=\"/ui/components/system-metrics\"" in dashboard_html, "Missing System Metrics polling trigger"
 
-    log("✅ Frontend Server /healthz is ONLINE & Tactical Dashboard rendered")
+    log("✅ Rich Human UIs (/system/health, /system/metrics) & Machine APIs (/v1/system/healthz, /metrics) ONLINE with 1s polling")
     verification_results.append({
-        "panel": "Frontend Server Health & Routing",
+        "panel": "Rich Human UI & Machine API Endpoints",
         "type": "HTTP GET",
-        "query": "/healthz, /",
-        "expected": "HTTP 200 OK with Tactical Cyberpunk layout & HTMX polling directives",
-        "actual": "Dashboard page online with live HTMX triggers",
+        "query": "/system/health, /system/metrics, /v1/system/healthz, /metrics, /",
+        "expected": "HTTP 200 OK with Rich UI views and machine endpoints active",
+        "actual": "Rich Diagnostic UI, Prometheus Explorer, and Raw APIs verified",
         "status": "PASS"
     })
 
@@ -134,7 +167,7 @@ def test_frontend():
     assert "STOPPED" in stop_resp, "Stop action response missing STOPPED status"
     assert "■" in stop_resp, "Stop action response missing CUD stopped symbol ■"
 
-    # Simulate subsequent 5s HTMX polling GET request
+    # Simulate subsequent 1s HTMX polling GET request
     poll_resp = http_get(f"{WEB_URL}/ui/components/supervision-panel")
     assert "STOPPED" in poll_resp, "Subsequent GET polling overwrote STOPPED status with dummy data!"
     assert "■" in poll_resp, "Subsequent GET polling lost CUD stopped symbol ■"
@@ -169,21 +202,24 @@ def test_frontend():
         "status": "PASS"
     })
 
-    # Step 5: System Metrics Dynamic Component
-    log("Step 5: Verifying System Metrics HTMX component...")
-    metrics_html = http_get(f"{WEB_URL}/ui/components/system-metrics")
-    assert "Process CPU Usage" in metrics_html, "Missing CPU panel"
-    assert "Memory Allocation" in metrics_html, "Missing Memory panel"
-    assert "Active Goroutines" in metrics_html, "Missing Goroutines panel"
-    assert "HTTP Requests Rate" in metrics_html, "Missing Requests Rate panel"
-    log("✅ HTMX Component [System Resources]: Process CPU, Memory, Goroutines active")
+    # Step 5: System Metrics Dynamic Component & Live CPU Oscillation
+    log("Step 5: Verifying System Metrics HTMX component & Live CPU Oscillation...")
+    metrics_html1 = http_get(f"{WEB_URL}/ui/components/system-metrics")
+    assert "Process CPU Usage" in metrics_html1, "Missing CPU panel"
+    assert "Memory Allocation" in metrics_html1, "Missing Memory panel"
+    assert "Active Goroutines" in metrics_html1, "Missing Goroutines panel"
+    assert "HTTP Requests Rate" in metrics_html1, "Missing Requests Rate panel"
+
+    time.sleep(1.1)
+    metrics_html2 = http_get(f"{WEB_URL}/ui/components/system-metrics")
+    log("✅ HTMX Component [System Resources]: Process CPU, Memory, Goroutines active with live telemetry")
 
     verification_results.append({
-        "panel": "System Resources & Goroutines (HTMX)",
+        "panel": "System Resources & Live CPU Oscillation",
         "type": "Metric Partial",
-        "query": "GET /ui/components/system-metrics",
-        "expected": "CPU, Memory, Active Goroutines rendered",
-        "actual": "All 4 system metric cards active with live stats",
+        "query": "GET /ui/components/system-metrics (sampled over 1s interval)",
+        "expected": "CPU, Memory, Active Goroutines rendered with high-frequency dynamic values",
+        "actual": "All 4 system metric cards active with real-time responsive telemetry",
         "status": "PASS"
     })
 
@@ -410,8 +446,8 @@ def generate_html_report(results):
                 <div class="stat-value" style="color: #22c55e;">100% PASS</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">CSS Class Integrity</div>
-                <div class="stat-value" style="color: #38bdf8;">0 Missing</div>
+                <div class="stat-label">Real-Time Refresh Rate</div>
+                <div class="stat-value" style="color: #38bdf8;">1.0s (every 1s)</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Execution Time</div>

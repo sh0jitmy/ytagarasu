@@ -1,0 +1,108 @@
+{{define "metrics_panel"}}
+<!-- Metrics Overview Header Card -->
+<div class="panel-card">
+    <div class="panel-header">
+        <div class="panel-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+            <span>Prometheus メトリクス・リアルタイムテレメトリ盤 (Prometheus Telemetry Dashboard)</span>
+            <span class="pulse-badge"><span class="heartbeat-dot"></span> 1s LIVE POLLING</span>
+        </div>
+        <a href="/metrics" target="_blank" class="btn btn-sm btn-outline">Raw /metrics エンドポイント ↗</a>
+    </div>
+    <p class="panel-desc">
+        Goランタイム、GC、メモリ配分、およびHTTPリクエストのPrometheusメトリクスを可視化しています。外部監視ツール（VictoriaMetrics / Prometheus）による定期スクレイプも並行して受け付けます。
+    </p>
+
+    <!-- Dynamic System Stats Ribbon -->
+    <div class="stats-cards-grid">
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">Active Goroutines</span>
+                <span class="stat-badge badge-accent">LIVE</span>
+            </div>
+            <div class="stat-value">{{.Metrics.Goroutines}}</div>
+            <div class="stat-sub">軽量並行処理ルーチン数</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">Heap Memory (Alloc)</span>
+                <span class="stat-badge badge-accent">RSS</span>
+            </div>
+            <div class="stat-value">{{.Metrics.MemAllocMB}} MB</div>
+            <div class="stat-sub">総確保メモリ: {{.Metrics.MemSysMB}} MB</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">CPU Utilization</span>
+                <span class="stat-badge badge-accent">1s Jitter</span>
+            </div>
+            <div class="stat-value">{{.Metrics.CPUUsage}}%</div>
+            <div class="stat-sub">リアルタイム動的テレメトリ</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-header">
+                <span class="stat-title">HTTP Handled Requests</span>
+                <span class="stat-badge badge-accent">TOTAL</span>
+            </div>
+            <div class="stat-value">{{.Metrics.RequestCount}}</div>
+            <div class="stat-sub">累積受信リクエスト総数</div>
+        </div>
+    </div>
+</div>
+
+<!-- Exported Prometheus Gauges / Counters Table -->
+<div class="panel-card">
+    <div class="panel-header">
+        <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            <span>主要 Prometheus メトリクス一覧 (Exported Gauges & Counters)</span>
+        </div>
+    </div>
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>メトリクス識別子</th>
+                    <th>種別</th>
+                    <th>現在値</th>
+                    <th>説明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>go_goroutines</code></td>
+                    <td><span class="badge badge-accent">GAUGE</span></td>
+                    <td class="font-mono font-bold">{{.Metrics.Goroutines}}</td>
+                    <td class="text-secondary">現在実行中のGoroutine総数</td>
+                </tr>
+                <tr>
+                    <td><code>go_memstats_alloc_bytes</code></td>
+                    <td><span class="badge badge-accent">GAUGE</span></td>
+                    <td class="font-mono font-bold">{{.Metrics.MemAllocMB}} MB</td>
+                    <td class="text-secondary">ヒープ領域に割り当てられた累積バイト数</td>
+                </tr>
+                <tr>
+                    <td><code>go_memstats_sys_bytes</code></td>
+                    <td><span class="badge badge-accent">GAUGE</span></td>
+                    <td class="font-mono font-bold">{{.Metrics.MemSysMB}} MB</td>
+                    <td class="text-secondary">OSから取得したシステム仮想メモリ容量</td>
+                </tr>
+                <tr>
+                    <td><code>http_requests_total</code></td>
+                    <td><span class="badge badge-accent">COUNTER</span></td>
+                    <td class="font-mono font-bold">{{.Metrics.RequestCount}}</td>
+                    <td class="text-secondary">UIおよびAPIで処理されたHTTPリクエスト累積数</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

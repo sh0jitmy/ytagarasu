@@ -1,0 +1,11 @@
+{{template "layout" .}}
+
+{{define "title"}}Prometheus メトリクス・テレメトリ盤{{end}}
+
+{{define "content"}}
+<div class="dashboard-grid">
+    <div id="metrics-container" hx-get="/ui/components/metrics-panel" hx-trigger="every 1s" hx-swap="innerHTML">
+        {{template "metrics_panel" .}}
+    </div>
+</div>
+{{end}}
