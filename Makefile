@@ -27,6 +27,7 @@ help:
 	@echo "    publish-pr       Verify formatting/lints/tests, push to origin, and create GitHub PR"
 	@echo "    ai-pr            Trigger AI agent to draft a GitHub PR in Japanese"
 	@echo "    e2e-report       Run E2E tests and generate HTML report for GitHub Pages"
+	@echo "    check-pages-links Verify all GitHub Pages links and HTML integrity (0 broken links)"
 	@echo "    workflow-check   Validate GitHub Actions workflow YAML syntax"
 	@echo "  Custom Skills Management:"
 	@echo "    check            Validate custom skill frontmatter and syntax"
@@ -197,6 +198,10 @@ self-eval:
 e2e-report: build
 	@echo "==> Running E2E tests and generating HTML report..."
 	@bash scripts/e2e_report.sh
+
+check-pages-links:
+	@echo "==> Auditing all GitHub Pages HTML files and links (Zero-404 gate)..."
+	@python3 scripts/check_pages_links.py
 
 workflow-check:
 	@echo "==> Validating GitHub Actions workflow files..."

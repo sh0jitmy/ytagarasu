@@ -25,7 +25,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPORT_DIR="${PROJECT_ROOT}/test_reports"
 RAW_JSON="${REPORT_DIR}/e2e_raw.json"
-HTML_REPORT="${REPORT_DIR}/index.html"
+HTML_REPORT="${REPORT_DIR}/go_test_e2e_report.html"
 HISTORY_FILE="${REPORT_DIR}/history.json"
 
 echo "============================================================"
@@ -52,6 +52,12 @@ echo "==> E2E test execution completed (exit code: $TEST_EXIT)"
 # --- Step 2: Generate HTML report ---
 echo "==> Generating HTML report from test results..."
 python3 "$SCRIPT_DIR/generate_e2e_report.py" "$RAW_JSON" "$HTML_REPORT" "$HISTORY_FILE"
+
+echo "==> Generating unified E2E portal (index.html)..."
+python3 "$SCRIPT_DIR/generate_e2e_portal.py"
+
+echo "==> Verifying all pages and links for Zero-404 compliance..."
+python3 "$SCRIPT_DIR/check_pages_links.py"
 
 echo ""
 echo "============================================================"

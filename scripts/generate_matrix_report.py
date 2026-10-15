@@ -226,6 +226,8 @@ def generate_report():
                 <span style="color: #f8fafc; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>📦</span> パッケージマトリクス詳細</span>
                 <span style="color: #64748b;">|</span>
                 <a href="frontend_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🖥️</span> スタンドアロン Frontend</a>
+                <span style="color: #64748b;">|</span>
+                <a href="go_test_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🧪</span> Go Core & Supervisor E2E</a>
             </div>
             <span style="font-size: 0.8rem; color: #64748b;">ytagarasu Package Matrix</span>
         </div>
