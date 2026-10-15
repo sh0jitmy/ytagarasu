@@ -40,13 +40,29 @@ def generate_portal():
     if not os.path.exists(matrix_file):
         subprocess.run(["python3", "scripts/generate_matrix_report.py"], check=False)
 
-    # Ensure go_test_e2e_report.html exists or generate dummy/cached if needed
+    # Ensure go_test_e2e_report.html exists
     go_test_file = os.path.join(REPORT_DIR, "go_test_e2e_report.html")
     if not os.path.exists(go_test_file):
         raw_json = os.path.join(REPORT_DIR, "e2e_raw.json")
         history_file = os.path.join(REPORT_DIR, "history.json")
-        if os.path.exists(raw_json):
-            subprocess.run(["python3", "scripts/generate_e2e_report.py", raw_json, go_test_file, history_file], check=False)
+        if not os.path.exists(raw_json):
+            print("==> Capturing Go Core & Supervisor E2E test results...")
+            try:
+                with open(raw_json, "w", encoding="utf-8") as f:
+                    subprocess.run(
+                        ["go", "test", "-json", "-count=1", "./pkg/supervisor", "./test/e2e", "./internal/service"],
+                        stdout=f,
+                        check=False,
+                    )
+            except Exception as e:
+                print(f"Notice: Failed to run go test for e2e_raw.json: {e}")
+        subprocess.run(["python3", "scripts/generate_e2e_report.py", raw_json, go_test_file, history_file], check=False)
+
+    # Ensure ytagarasu_ui_e2e_report.html exists
+    ui_report_file = os.path.join(REPORT_DIR, "ytagarasu_ui_e2e_report.html")
+    if not os.path.exists(ui_report_file):
+        print("==> Generating default ytagarasu UI E2E report...")
+        subprocess.run(["python3", "scripts/test_ytagarasu_ui.py"], check=False)
 
     html = f"""<!DOCTYPE html>
 <html lang="ja">
