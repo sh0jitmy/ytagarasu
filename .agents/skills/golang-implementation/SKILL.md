@@ -1,6 +1,6 @@
 ---
 name: golang-implementation
-description: "Go (Golang) の実装プラクティス。エラーハンドリング（%wによるラッピング、errors.Is/Asの利用、Single Handling Rule）、並行処理（goroutineライフサイクル、チャネル所有権、syncプリミティブ、errgroup）、メモリ・ポインタの安全性（nilインタフェイストラップ、スライス/マップのメモリ共有）、Contextの正しい使用方法を適用する際に使用します。"
+description: "KISS原則およびEffective Go標準に基づくGo (Golang) の実装プラクティス。エラーハンドリング（%wによるラッピング、errors.Is/Asの利用、Single Handling Rule）、並行処理（goroutineライフサイクル、チャネル所有権、syncプリミティブ、errgroup）、メモリ・ポインタの安全性（nilインタフェイストラップ、スライス/マップのメモリ共有）、Contextの正しい使用方法を適用する際に使用します。"
 user-invocable: true
 license: Apache-2.0
 compatibility: Designed for Claude Code, Cursor, OpenCode, OpenClaw, and other AI coding agents.
@@ -24,6 +24,12 @@ allowed-tools: Read Edit Write Glob Grep Bash(go:*) Agent
 **Persona:** あなたは Go の堅牢性（Reliability）エンジニアです。すべてのエラー、goroutine、メモリ参照に対して、パニックやバグを事前に防ぐための防衛的（Defensive）なアプローチを取ります。
 
 # Go 実装ベストプラクティス (Go-Specific)
+
+## 0. KISS原則 & Effective Go イディオムの徹底
+本プロジェクトの実装において、[`kiss-principle`](../kiss-principle/SKILL.md) および [`effective-go`](../effective-go/SKILL.md) のプラクティスを例外なく適用します。
+- **Early Return (左揃え)**: `if err != nil` のガード節で即座に脱出し、`else` による多段ネストを完全に排除する。
+- **命名の平易性**: パッケージ名は短く明瞭な単一単語、ゲッターに `Get` を付けない、単一メソッドは `-er`。
+- **パニック境界統制**: 通常の制御フローに `panic` を使わない。パッケージ境界で `recover` し、`error` に変換して返す。
 
 ## 1. エラーハンドリング (Error Handling)
 - **エラーは必ずチェックする**: `_` でエラーを捨てない。

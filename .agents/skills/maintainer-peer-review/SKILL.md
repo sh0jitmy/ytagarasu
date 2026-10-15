@@ -60,3 +60,15 @@ license: Apache-2.0
 - **実機レンダリング検証**: 文字列のアサーションだけでなく、Headless Chrome等による実機スクリーンショットでスタイル崩れがないことが確認されているか？
 - **生きた状態監視の視覚化 (Living System & Anti-Stall)**: 画面が静止・怪しく見えないよう、心拍パルス（Heartbeat）、診断サイクル通番、精密ミリ秒タイムスタンプ、動的レイテンシが担保されているか？
 - **CUD Triple Coding**: 記号・英語・色彩の3重識別（◆ RUNNING, ■ STOPPED, ▲ WARN, ✖ CRITICAL）が正確に担保されているか？
+
+### 8. KISS原則 & Effective Go イディオム適合性 (KISS & Effective Go Compliance)
+- **KISS原則遵守 (`kiss-principle`)**:
+  - 実装が1つしかないのに無駄なインターフェースやFactoryを切っていないか（Interface Pollutionの排除）？
+  - 将来の「もしかしたら（YAGNI）」を想定した余計な多段ラッパーや過剰な設定パラメータを追加していないか？
+  - ガード節と早期リターン（Early Return）により、正常系がネストせず左揃えになっているか？
+- **Effective Go準拠 (`effective-go`)**:
+  - パッケージ名は短く明瞭な名詞（`util`/`common` の排除）になっているか？
+  - ゲッター関数に `Get` プレフィックスを付けていないか（例: `obj.Owner()`）？
+  - 「インターフェースを受け取り、構造体を返す（Accept interfaces, return structs）」原則を守っているか？
+  - Goroutine に明確な終了条件（Context / Doneチャネル）があり、リークの余地がないか？
+  - パニックを通常の制御フローに使用せず、エラーを `%w` でラップして伝播しているか？

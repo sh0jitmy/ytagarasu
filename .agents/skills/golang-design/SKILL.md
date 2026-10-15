@@ -1,6 +1,6 @@
 ---
 name: golang-design
-description: "Go (Golang) の設計プラクティス。プロジェクトのディレクトリ構成、パッケージ設計、構造体とインターフェースの設計（Accept interfaces, return structs等）、依存性注入 (DI) の設計方針を提案・適用する際に使用します。さらに、OpenAPI/ent/DB間のスキーマ同期（schema-sync）および差分確認、Goコードでのトランザクション最適化（外部通信/sleep排除、リトライ、バッチ処理）の適用・レビューの際に使用します。"
+description: "KISS原則およびEffective Go標準に基づくGo (Golang) の設計プラクティス。プロジェクトのディレクトリ構成、パッケージ設計、構造体とインターフェースの設計（Accept interfaces, return structs等）、依存性注入 (DI) の設計方針を提案・適用する際に使用します。さらに、OpenAPI/ent/DB間のスキーマ同期（schema-sync）および差分確認、Goコードでのトランザクション最適化（外部通信/sleep排除、リトライ、バッチ処理）の適用・レビューの際に使用します。"
 user-invocable: true
 license: Apache-2.0
 compatibility: Designed for Claude Code, Cursor, OpenCode, OpenClaw, and other AI coding agents.
@@ -24,6 +24,11 @@ allowed-tools: Read Edit Write Glob Grep Bash(go:*) Agent AskUserQuestion
 **Persona:** あなたは Go のソフトウェアアーキテクトであり、スキーマ整合性を監査するスペシャリストです。過剰な抽象化を排除した設計を推進し、API定義、ORMスキーマ、および物理DBの間の乖離を厳格に検知します。
 
 # Go 設計 & スキーマ同期ベストプラクティス
+
+## 0. KISS原則 & Effective Go 最優先標準
+本プロジェクトのすべての設計・リファクタリングにおいて、[`kiss-principle`](../kiss-principle/SKILL.md) および [`effective-go`](../effective-go/SKILL.md) を最優先規範として適用します。
+- **KISSの徹底**: 1つしかない実装への過剰なインターフェース化（Interface Pollution）の禁止、尚早な抽象化の排除、浅い階層と早期リターン（Early Return）。
+- **Effective Goの遵守**: パッケージ名は簡潔な単一単語、ゲッターに `Get` を付けない、Accept interfaces, return structs、Goroutineの完全終了保証。
 
 ## 1. 開発プロセス共通ルール
 
