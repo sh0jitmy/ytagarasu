@@ -129,6 +129,9 @@ fi
 echo -e "${YELLOW}Generating unified E2E portal (index.html)...${NC}"
 python3 scripts/generate_e2e_portal.py
 
+echo -e "\n${YELLOW}Auditing all GitHub Pages HTML files and links (Zero-404 gate)...${NC}"
+python3 scripts/check_pages_links.py
+
 echo -e "\n${GREEN}========================================================================${NC}"
 echo -e "${GREEN} ✅ ALL FRONTEND (NO-DOCKER) E2E TESTS PASSED SUCCESSFULLY!             ${NC}"
 echo -e "${GREEN}    - Standalone Web Server: Running without Docker                     ${NC}"

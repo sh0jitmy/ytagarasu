@@ -430,6 +430,21 @@ def generate_html_report(current_run: dict, history: list, repo: str, project_na
 </head>
 <body>
     <div class="container">
+        <div style="background: #1e293b; border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; justify-content: space-between; border: 1px solid #334155; flex-wrap: wrap;">
+            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                <a href="index.html" style="color: #38bdf8; text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🏠</span> 総合ポータル</a>
+                <span style="color: #64748b;">|</span>
+                <a href="ytagarasu_ui_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🔍</span> ytagarasu & マニフェスト作成支援</a>
+                <span style="color: #64748b;">|</span>
+                <a href="matrix_test_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>📦</span> パッケージマトリクス詳細</a>
+                <span style="color: #64748b;">|</span>
+                <a href="frontend_e2e_report.html" style="color: #94a3b8; text-decoration: none; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🖥️</span> スタンドアロン Frontend</a>
+                <span style="color: #64748b;">|</span>
+                <span style="color: #f8fafc; font-weight: 700; display: inline-flex; align-items: center; gap: 0.3rem;"><span>🧪</span> Go Core & Supervisor E2E</span>
+            </div>
+            <span style="font-size: 0.8rem; color: #64748b;">ytagarasu Core Verification</span>
+        </div>
+
         <header>
             <div>
                 <h1>{html.escape(project_name)} E2E Test Report</h1>
@@ -529,7 +544,7 @@ def generate_html_report(current_run: dict, history: list, repo: str, project_na
 
 def main():
     raw_json_file = sys.argv[1] if len(sys.argv) > 1 else "test_reports/e2e_raw.json"
-    output_html_file = sys.argv[2] if len(sys.argv) > 2 else "test_reports/index.html"
+    output_html_file = sys.argv[2] if len(sys.argv) > 2 else "test_reports/go_test_e2e_report.html"
     history_file = sys.argv[3] if len(sys.argv) > 3 else "test_reports/history.json"
 
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -582,7 +597,7 @@ def main():
     if not project_name and repo:
         project_name = repo.split("/")[-1]
     if not project_name:
-        project_name = "Go Project"
+        project_name = "ytagarasu Go Core & Supervisor E2E Suite"
 
     # Generate HTML report
     html_content = generate_html_report(run_data, updated_history, repo, project_name)
