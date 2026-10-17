@@ -56,6 +56,7 @@ type ProcessConfig struct {
 	HealthEndpoint  string            `json:"health_endpoint,omitempty" yaml:"health_endpoint,omitempty"`
 	RollbackOnError bool              `json:"rollback_on_error" yaml:"rollback_on_error"`
 	EscapeHatchMode bool              `json:"escape_hatch_mode,omitempty" yaml:"escape_hatch_mode,omitempty"`
+	OOMResilient    bool              `json:"oom_resilient,omitempty" yaml:"oom_resilient,omitempty"`
 }
 
 // ProcessSupervisor defines the unified cross-platform interface for process oversight.
@@ -80,27 +81,32 @@ type ProcessRuntimeStatus struct {
 	CrashCount  int          `json:"crash_count"`
 	CurrentPath string       `json:"current_path"`
 	OS          string       `json:"os"`
+	OOMKilled   bool         `json:"oom_killed,omitempty"`
 }
 
 // BaseSupervisor provides universal cross-platform supervision logic with zero Cgo dependencies.
 type BaseSupervisor struct {
-	spec        ProcessConfig
-	mu          sync.RWMutex
-	cmd         *exec.Cmd
-	state       ProcessState
-	restarts    int
-	crashCount  int
-	startedAt   time.Time
-	lastCrashAt time.Time
-	cancel      context.CancelFunc
-	waitDone    chan struct{}
+	spec            ProcessConfig
+	mu              sync.RWMutex
+	cmd             *exec.Cmd
+	state           ProcessState
+	restarts        int
+	crashCount      int
+	startedAt       time.Time
+	lastCrashAt     time.Time
+	cancel          context.CancelFunc
+	waitDone        chan struct{}
+	cgroupInspector *CgroupInspector
+	initialEvents   *CgroupMemoryEvents
+	oomKilled       bool
 }
 
 // NewProcessSupervisor creates an OS-aware supervisor instance.
 func NewProcessSupervisor(spec ProcessConfig) ProcessSupervisor {
 	return &BaseSupervisor{
-		spec:  spec,
-		state: StateStopped,
+		spec:            spec,
+		state:           StateStopped,
+		cgroupInspector: NewCgroupInspector(),
 	}
 }
 
@@ -113,6 +119,7 @@ func (s *BaseSupervisor) Start(ctx context.Context) error {
 	}
 
 	s.state = StateStarting
+	s.oomKilled = false
 	cmdCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 
@@ -139,12 +146,24 @@ func (s *BaseSupervisor) Start(ctx context.Context) error {
 	s.startedAt = time.Now()
 	s.waitDone = make(chan struct{})
 
+	// Record initial cgroup baseline if available
+	if s.cgroupInspector != nil && cmd.Process != nil {
+		if ev, evErr := s.cgroupInspector.InspectPID(cmd.Process.Pid); evErr == nil {
+			s.initialEvents = ev
+		}
+	}
+
 	go s.watchProcess(cmd, s.waitDone)
 
 	return nil
 }
 
 func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd, waitDone chan struct{}) {
+	pid := 0
+	if cmd != nil && cmd.Process != nil {
+		pid = cmd.Process.Pid
+	}
+
 	err := cmd.Wait()
 	close(waitDone)
 
@@ -153,6 +172,14 @@ func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd, waitDone chan struct{}) {
 
 	if s.state == StateStopped {
 		return
+	}
+
+	// Check if process was killed by kernel OOM Killer
+	if s.cgroupInspector != nil && pid > 0 {
+		if isOOM, latest := s.cgroupInspector.IsOOMKilled(pid, s.initialEvents); isOOM {
+			s.oomKilled = true
+			fmt.Printf("[ytg supervisor OOM-RESCUE] Process '%s' (PID %d) terminated by Linux Kernel OOM Killer (oom_kill counter: %d). Engaging autonomous recovery...\n", s.spec.Name, pid, latest.OOMKill)
+		}
 	}
 
 	s.state = StateCrashed
@@ -235,6 +262,7 @@ func (s *BaseSupervisor) Status() ProcessRuntimeStatus {
 		CrashCount:  s.crashCount,
 		CurrentPath: s.spec.Binary,
 		OS:          runtime.GOOS,
+		OOMKilled:   s.oomKilled,
 	}
 }
 
