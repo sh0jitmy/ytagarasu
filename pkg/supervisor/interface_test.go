@@ -18,6 +18,9 @@ package supervisor
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,5 +65,44 @@ func TestProcessSupervisor_LifecycleAndRestart(t *testing.T) {
 	status = sup.Status()
 	if status.State != StateStopped {
 		t.Errorf("Expected StateStopped, got %v", status.State)
+	}
+}
+
+func TestProcessSupervisor_WithLogRotation(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "supervisor-out.log")
+
+	spec := ProcessConfig{
+		Name:          "log-worker",
+		Binary:        "go",
+		Args:          []string{"version"},
+		LogPath:       logFile,
+		LogMaxSizeMB:  10,
+		LogMaxBackups: 2,
+		LogCompress:   false,
+	}
+
+	sup := NewProcessSupervisor(spec)
+	ctx := context.Background()
+
+	if err := sup.Start(ctx); err != nil {
+		t.Fatalf("Failed to start supervisor with logging: %v", err)
+	}
+
+	// Wait for process to exit and flush
+	time.Sleep(600 * time.Millisecond)
+	_ = sup.Stop(1 * time.Second)
+
+	// Check that logFile was written and contains "go version"
+	// #nosec G304 -- Test reads temporary file created in test dir
+	content, err := os.ReadFile(filepath.Clean(logFile))
+	if err != nil {
+		t.Fatalf("Failed to read supervisor log file: %v", err)
+	}
+
+	if !strings.Contains(string(content), "go version") {
+		t.Errorf("Expected log file to contain 'go version', got: %s", string(content))
 	}
 }
