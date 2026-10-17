@@ -58,12 +58,29 @@ func TestUIServer_RoutesAndHTMX(t *testing.T) {
 		assert.Equal(t, http.StatusOK, wHealth.Code)
 		assert.Contains(t, wHealth.Body.String(), "UP")
 
+		// /livez
+		wLivez := httptest.NewRecorder()
+		reqLivez, _ := http.NewRequest(http.MethodGet, "/livez", nil)
+		server.Engine.ServeHTTP(wLivez, reqLivez)
+		assert.Equal(t, http.StatusOK, wLivez.Code)
+		assert.Contains(t, wLivez.Body.String(), "ALIVE")
+
+		// /readyz
+		wReadyz := httptest.NewRecorder()
+		reqReadyz, _ := http.NewRequest(http.MethodGet, "/readyz", nil)
+		server.Engine.ServeHTTP(wReadyz, reqReadyz)
+		assert.Equal(t, http.StatusOK, wReadyz.Code)
+		assert.Contains(t, wReadyz.Body.String(), "READY")
+
 		// /metrics (Scraper API)
 		wMetrics := httptest.NewRecorder()
 		reqMetrics, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
 		server.Engine.ServeHTTP(wMetrics, reqMetrics)
 		assert.Equal(t, http.StatusOK, wMetrics.Code)
 		assert.Contains(t, wMetrics.Body.String(), "go_goroutines")
+		assert.Contains(t, wMetrics.Body.String(), "ytagarasu_process_status")
+		assert.Contains(t, wMetrics.Body.String(), "ytagarasu_process_uptime_seconds")
+		assert.Contains(t, wMetrics.Body.String(), "ytagarasu_process_restart_total")
 	}
 
 	// 2. Rich UI Navigation Pages (Human UI)

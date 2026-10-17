@@ -76,8 +76,12 @@ func SetupEngine(db *ent.Client) *gin.Engine {
 	// メトリクススクレイプ用エンドポイント（Prometheus形式でエクスポート）
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
-	// System & Observability エンドポイント
+	// System & Observability エンドポイント (L4/L7 ヘルスプローブ & Prometheus 統合)
+	r.GET("/healthz", s.GetHealthz)
+	r.GET("/livez", s.GetHealthz)
+	r.GET("/readyz", s.GetReadyz)
 	r.GET("/v1/system/healthz", s.GetHealthz)
+	r.GET("/v1/system/livez", s.GetHealthz)
 	r.GET("/v1/system/readyz", s.GetReadyz)
 	r.GET("/v1/system/backups", s.ListBackups)
 	r.POST("/v1/system/backups", s.CreateBackup)

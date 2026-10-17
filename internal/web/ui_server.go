@@ -32,6 +32,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sh0jitmy/ytagarasu/ent"
 	"github.com/sh0jitmy/ytagarasu/ent/user"
@@ -143,6 +145,18 @@ func NewSupervisionManager() *SupervisionManager {
 			},
 		},
 	}
+}
+
+// GetProcessesSnapshot returns a thread-safe copy of currently managed processes.
+func (sm *SupervisionManager) GetProcessesSnapshot() []ManagedProcess {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	result := make([]ManagedProcess, len(sm.processes))
+	for i, p := range sm.processes {
+		result[i] = *p
+	}
+	return result
 }
 
 func formatDuration(d time.Duration) string {
@@ -349,6 +363,12 @@ func (s *UIServer) setupRoutes() {
 	s.Engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "OK"})
 	})
+	s.Engine.GET("/livez", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ALIVE"})
+	})
+	s.Engine.GET("/readyz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "READY"})
+	})
 	s.Engine.GET("/v1/system/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "UP",
@@ -357,14 +377,25 @@ func (s *UIServer) setupRoutes() {
 			"hal":       s.getHALName(),
 		})
 	})
+	s.Engine.GET("/v1/system/livez", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ALIVE"})
+	})
 	s.Engine.GET("/v1/system/readyz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "READY",
 		})
 	})
 
+	// Dedicated Prometheus Registry avoiding global collisions in tests
+	promRegistry := prometheus.NewRegistry()
+	promRegistry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		newSupervisionCollector(s.SupervisionManager),
+	)
+
 	// Prometheus Metrics endpoint (Scraper API)
-	s.Engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	s.Engine.GET("/metrics", gin.WrapH(promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{})))
 
 	// Rich System Health Diagnostic View Page (Human UI)
 	s.Engine.GET("/system/health", func(c *gin.Context) {
