@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -104,5 +105,54 @@ func TestProcessSupervisor_WithLogRotation(t *testing.T) {
 
 	if !strings.Contains(string(content), "go version") {
 		t.Errorf("Expected log file to contain 'go version', got: %s", string(content))
+	}
+}
+
+func TestProcessSupervisor_OOMDetectionMock(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	procRoot := filepath.Join(tmpDir, "proc")
+	cgroupRoot := filepath.Join(tmpDir, "sys", "fs", "cgroup")
+
+	spec := ProcessConfig{
+		Name:            "oom-worker",
+		Binary:          "go",
+		Args:            []string{"version"},
+		AutoRestart:     false,
+		RollbackOnError: false,
+	}
+
+	baseSup := &BaseSupervisor{
+		spec:  spec,
+		state: StateStopped,
+		cgroupInspector: &CgroupInspector{
+			CgroupRoot: cgroupRoot,
+			ProcRoot:   procRoot,
+		},
+	}
+
+	ctx := context.Background()
+	if err := baseSup.Start(ctx); err != nil {
+		t.Fatalf("failed to start supervisor: %v", err)
+	}
+
+	pid := baseSup.cmd.Process.Pid
+	pidDir := filepath.Join(procRoot, strconv.Itoa(pid))
+	_ = os.MkdirAll(pidDir, 0750)
+	cgroupRel := "system.slice/oom-worker.service"
+	cgroupDir := filepath.Join(cgroupRoot, cgroupRel)
+	_ = os.MkdirAll(cgroupDir, 0750)
+
+	_ = os.WriteFile(filepath.Join(pidDir, "cgroup"), []byte("0::/"+cgroupRel+"\n"), 0600)
+	_ = os.WriteFile(filepath.Join(cgroupDir, "memory.events"), []byte("oom 1\noom_kill 1\n"), 0600)
+
+	// Wait for process to exit
+	time.Sleep(300 * time.Millisecond)
+	_ = baseSup.Stop(1 * time.Second)
+
+	status := baseSup.Status()
+	if status.State != StateStopped && status.State != StateCrashed {
+		t.Errorf("unexpected state: %v", status.State)
 	}
 }
