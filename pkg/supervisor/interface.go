@@ -56,6 +56,10 @@ type ProcessConfig struct {
 	HealthEndpoint  string            `json:"health_endpoint,omitempty" yaml:"health_endpoint,omitempty"`
 	RollbackOnError bool              `json:"rollback_on_error" yaml:"rollback_on_error"`
 	EscapeHatchMode bool              `json:"escape_hatch_mode,omitempty" yaml:"escape_hatch_mode,omitempty"`
+	LogPath         string            `json:"log_path,omitempty" yaml:"log_path,omitempty"`
+	LogMaxSizeMB    int               `json:"log_max_size_mb,omitempty" yaml:"log_max_size_mb,omitempty"`
+	LogMaxBackups   int               `json:"log_max_backups,omitempty" yaml:"log_max_backups,omitempty"`
+	LogCompress     bool              `json:"log_compress,omitempty" yaml:"log_compress,omitempty"`
 	OOMResilient    bool              `json:"oom_resilient,omitempty" yaml:"oom_resilient,omitempty"`
 }
 
@@ -89,6 +93,7 @@ type BaseSupervisor struct {
 	spec            ProcessConfig
 	mu              sync.RWMutex
 	cmd             *exec.Cmd
+	logWriter       *RotatingWriter
 	state           ProcessState
 	restarts        int
 	crashCount      int
@@ -134,7 +139,29 @@ func (s *BaseSupervisor) Start(ctx context.Context) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	if s.spec.LogPath != "" {
+		lw, err := NewRotatingWriter(RotatingLogConfig{
+			Filename:   s.spec.LogPath,
+			MaxSizeMB:  s.spec.LogMaxSizeMB,
+			MaxBackups: s.spec.LogMaxBackups,
+			Compress:   s.spec.LogCompress,
+		})
+		if err != nil {
+			s.state = StateCrashed
+			s.crashCount++
+			s.lastCrashAt = time.Now()
+			return fmt.Errorf("failed to initialize rotating log writer for '%s': %w", s.spec.Name, err)
+		}
+		s.logWriter = lw
+		cmd.Stdout = lw
+		cmd.Stderr = lw
+	}
+
 	if err := cmd.Start(); err != nil {
+		if s.logWriter != nil {
+			_ = s.logWriter.Close()
+			s.logWriter = nil
+		}
 		s.state = StateCrashed
 		s.crashCount++
 		s.lastCrashAt = time.Now()
@@ -168,6 +195,10 @@ func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd, waitDone chan struct{}) {
 	close(waitDone)
 
 	s.mu.Lock()
+	if s.logWriter != nil {
+		_ = s.logWriter.Close()
+		s.logWriter = nil
+	}
 	defer s.mu.Unlock()
 
 	if s.state == StateStopped {
@@ -202,6 +233,10 @@ func (s *BaseSupervisor) Stop(gracePeriod time.Duration) error {
 	s.mu.Lock()
 	if s.state != StateRunning || s.cmd == nil || s.cmd.Process == nil {
 		s.state = StateStopped
+		if s.logWriter != nil {
+			_ = s.logWriter.Close()
+			s.logWriter = nil
+		}
 		s.mu.Unlock()
 		return nil
 	}
@@ -222,6 +257,13 @@ func (s *BaseSupervisor) Stop(gracePeriod time.Duration) error {
 		<-waitDone
 	case <-waitDone:
 	}
+
+	s.mu.Lock()
+	if s.logWriter != nil {
+		_ = s.logWriter.Close()
+		s.logWriter = nil
+	}
+	s.mu.Unlock()
 
 	return nil
 }
