@@ -41,15 +41,23 @@ type ManifestSpec struct {
 	Version   string          `yaml:"version"`
 	Processes []ProcessConfig `yaml:"processes,omitempty"`
 	Services  []struct {
-		Name        string `yaml:"name"`
-		Binary      string `yaml:"binary,omitempty"`
-		Action      string `yaml:"action,omitempty"`
-		AutoRestart *bool  `yaml:"auto_restart,omitempty"`
+		Name          string `yaml:"name"`
+		Binary        string `yaml:"binary,omitempty"`
+		Action        string `yaml:"action,omitempty"`
+		AutoRestart   *bool  `yaml:"auto_restart,omitempty"`
+		LogPath       string `yaml:"log_path,omitempty"`
+		LogMaxSizeMB  int    `yaml:"log_max_size_mb,omitempty"`
+		LogMaxBackups int    `yaml:"log_max_backups,omitempty"`
+		LogCompress   bool   `yaml:"log_compress,omitempty"`
 	} `yaml:"services,omitempty"`
 	Applications []struct {
-		Name        string `yaml:"name"`
-		Artifact    string `yaml:"artifact,omitempty"`
-		Destination string `yaml:"destination,omitempty"`
+		Name          string `yaml:"name"`
+		Artifact      string `yaml:"artifact,omitempty"`
+		Destination   string `yaml:"destination,omitempty"`
+		LogPath       string `yaml:"log_path,omitempty"`
+		LogMaxSizeMB  int    `yaml:"log_max_size_mb,omitempty"`
+		LogMaxBackups int    `yaml:"log_max_backups,omitempty"`
+		LogCompress   bool   `yaml:"log_compress,omitempty"`
 	} `yaml:"applications,omitempty"`
 }
 
@@ -103,10 +111,14 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 				autoRestart = *svc.AutoRestart
 			}
 			configs[svc.Name] = ProcessConfig{
-				Name:        svc.Name,
-				Binary:      bin,
-				AutoRestart: autoRestart,
-				MaxRetries:  3,
+				Name:          svc.Name,
+				Binary:        bin,
+				AutoRestart:   autoRestart,
+				MaxRetries:    3,
+				LogPath:       svc.LogPath,
+				LogMaxSizeMB:  svc.LogMaxSizeMB,
+				LogMaxBackups: svc.LogMaxBackups,
+				LogCompress:   svc.LogCompress,
 			}
 		}
 	}
@@ -122,10 +134,14 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 				bin = app.Name
 			}
 			configs[app.Name] = ProcessConfig{
-				Name:        app.Name,
-				Binary:      bin,
-				AutoRestart: true,
-				MaxRetries:  3,
+				Name:          app.Name,
+				Binary:        bin,
+				AutoRestart:   true,
+				MaxRetries:    3,
+				LogPath:       app.LogPath,
+				LogMaxSizeMB:  app.LogMaxSizeMB,
+				LogMaxBackups: app.LogMaxBackups,
+				LogCompress:   app.LogCompress,
 			}
 		}
 	}
