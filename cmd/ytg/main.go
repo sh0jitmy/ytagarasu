@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/sh0jitmy/ytagarasu/internal/version"
+	"github.com/sh0jitmy/ytagarasu/pkg/completion"
 	"github.com/sh0jitmy/ytagarasu/pkg/supervisor"
 )
 
@@ -58,6 +59,9 @@ func main() {
 	case "supervisor":
 		handleSupervisor(os.Args[2:])
 
+	case "completion":
+		handleCompletion(os.Args[2:])
+
 	case "manifest", "bundle", "audit", "discover":
 		// Transparently delegate to ytagarasu binary if available
 		//nolint:gosec // Intentional delegation to sibling ytagarasu command
@@ -78,6 +82,46 @@ func main() {
 		printHelp()
 		os.Exit(1)
 	}
+}
+
+func handleCompletion(args []string) {
+	if len(args) == 0 {
+		printCompletionHelp()
+		os.Exit(1)
+	}
+
+	sh := completion.Shell(args[0])
+	if err := completion.Generate(sh, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n\n", err)
+		printCompletionHelp()
+		os.Exit(1)
+	}
+}
+
+func printCompletionHelp() {
+	fmt.Println("Usage: ytg completion <shell>")
+	fmt.Println()
+	fmt.Println("Generate shell autocompletion scripts for ytg.")
+	fmt.Println()
+	fmt.Println("Supported shells:")
+	fmt.Println("  bash          Generate Bash autocompletion script")
+	fmt.Println("  zsh           Generate Zsh autocompletion script")
+	fmt.Println("  powershell    Generate PowerShell autocompletion script")
+	fmt.Println("  fish          Generate Fish autocompletion script")
+	fmt.Println()
+	fmt.Println("Installation Examples:")
+	fmt.Println("  Bash:")
+	fmt.Println("    source <(ytg completion bash)")
+	fmt.Println("    ytg completion bash | sudo tee /etc/bash_completion.d/ytg")
+	fmt.Println()
+	fmt.Println("  Zsh:")
+	fmt.Println("    ytg completion zsh > \"${fpath[1]}/_ytg\"")
+	fmt.Println()
+	fmt.Println("  PowerShell:")
+	fmt.Println("    ytg completion powershell | Out-String | Invoke-Expression")
+	fmt.Println()
+	fmt.Println("  Fish:")
+	fmt.Println("    ytg completion fish > ~/.config/fish/completions/ytg.fish")
 }
 
 func handleSupervisor(args []string) {
@@ -237,6 +281,7 @@ func printHelp() {
 	fmt.Println("  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
 	fmt.Println("  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
 	fmt.Println("  discover <subcmd>       Interactive server survey and automated manifest discovery (survey, generate)")
+	fmt.Println("  completion <shell>      Generate shell autocompletion script (bash, zsh, powershell, fish)")
 	fmt.Println("  version                 Show binary version and build metadata")
 	fmt.Println("  help                    Show help information")
 	fmt.Println()
@@ -246,6 +291,8 @@ func printHelp() {
 	fmt.Println("  ytg supervisor restart backend-api")
 	fmt.Println("  ytg supervisor restart --all")
 	fmt.Println("  ytg supervisor rollback --all")
+	fmt.Println("  source <(ytg completion bash)")
+	fmt.Println("  ytg completion zsh > ~/.zfunc/_ytg")
 }
 
 func printSupervisorHelp() {
