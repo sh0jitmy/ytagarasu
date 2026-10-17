@@ -72,6 +72,12 @@ func TestGenerate_AllShells(t *testing.T) {
 			if !strings.Contains(out, "supervisor") {
 				t.Errorf("expected completion script to mention 'supervisor', but got: %s", out)
 			}
+			// Root commands verification
+			for _, cmd := range []string{"status", "inspect", "restart"} {
+				if !strings.Contains(out, cmd) {
+					t.Errorf("expected completion script for %s to contain root command %q", tt.shell, cmd)
+				}
+			}
 		})
 	}
 }
