@@ -6,7 +6,7 @@
 
 **ytagarasu（八咫烏）** は、インターネット接続が完全に遮断された**エアギャップ（完全オフライン）環境**のための、高信頼・自律型デプロイメント基盤プラットフォームです。
 
-金融・医療・エネルギー・制御システム・製造工場などの閉域ネットワークにおいて、再帰的依存解決済みパッケージ、アプリケーション成果物、設定テンプレート、TLS 証明書をひとつの暗号署名付きバンドルにまとめ、物理メディア搬送からサーバー配布、クライアントエージェントによる自動適用・ロールバック・監査トレースまでをエンドツーエンドで完結させます。
+金融・医療・エネルギー・制御システム・製造工場などの閉域ネットワークにおいて、再帰的依存解決済みパッケージ、アプリケーション成果物、設定テンプレート、TLS 証明書をひとつの暗号署名付きバンドルにまとめ、物理メディア搬送からサーバー配布、クライアントエージェントによる自動適用・ロールバック・監査トレース、そして単一バイナリによる軽量プロセス監視までをエンドツーエンドで完結させます。
 
 ---
 
@@ -31,16 +31,18 @@
    │    ├── コンテンツアドレス可能ストレージ (SHA-256 CAS)                  │
    │    ├── CGO-free WAL SQLite リリース管理 & 仮想リポジトリ (/repos/...)   │
    │    ├── 改ざん耐性 SHA-256 監査ハッシュチェーン (/api/v1/audit/...)     │
+   │    ├── Prometheus 互換メトリクススクレイプ (/metrics) & ヘルスプローブ  │
    │    └── Node.js不要の組み込み HTMX ダッシュボード (/ui)                 │
    └────┬───────────────────────────────────────────────────────────────────┘
         │ HTTP (Desired State Polling)
         ▼
    ┌────────────────────────────────────────────────────────────────────────┐
-   │ 5. 自律型デプロイエージェント (ytagarasu-agent)                        │
+   │ 5. 自律型デプロイエージェント & スーパーバイザー (ytagarasu-agent / ytg)│
+   │    ├── 3文字CLI 'ytg' によるヘッドレス運用 (status, inspect, restart)   │
+   │    ├── 外部cron不要の内蔵型極小ログローテーション & ディスク保護       │
+   │    ├── Linux cgroup v2 memory.events 監視 & OOM Killer 自律復旧        │
    │    ├── flock 多重実行ガードによる競合防止                              │
    │    ├── 非対話的パッケージインストール (DEBIAN_FRONTEND / -y)           │
-   │    ├── Go text/template 設定ファイル動的レンダリング                   │
-   │    ├── validateCommand による反映前構文検証 (nginx -t 等)             │
    │    ├── renameat 不可分更新 & 失敗時の即座スナップショット復元          │
    │    └── HTTP / コマンドによるポスト健全性プローブ (HealthCheck)         │
    └────────────────────────────────────────────────────────────────────────┘
@@ -58,26 +60,27 @@
    - マニフェスト内の有効期限（`ExpiresAt`）チェックによる誤搬送・リプレイアタックの防止。
 3. **🔗 改ざん耐性 SHA-256 監査ハッシュチェーン**:
    - バンドルインポート、リリース切り替え、エージェントデプロイ結果の全履歴を直前ブロックのハッシュと連鎖記録。
-   - ジェネシスブロックからの数学的完全性を即時検証可能（Web UI および `ytagarasu audit verify` CLI）。
-4. **⚡ 差分バンドル（Delta Bundle）エンジン**:
-   - 前バージョンとの差分を自動検知し、追加・変更されたファイルのみを収録（データ転送量を 80〜99% 削減）。
-   - サーバーの CAS（重複排除ブロブストレージ）から未変更ファイルを自動再利用。
-5. **🔄 アトミック設定管理 & 自動ロールバック**:
-   - Go `text/template` による環境変数・ポート等の動的展開。
-   - 反映前の構文検証 (`validateCommand`)、一時ファイル書き出し後の `renameat` アトミックリプレイス。
-   - ヘルスチェック失敗時の即座スナップショット復元（ゼロ人手介入）。
-6. **🔍 既存サーバーからのマニフェスト作成支援 (KISSホワイトリスト・リバースエンジニアリング)**:
+4. **⚡ 3文字CLI `ytg` によるヘッドレス運用 & プロセススーパーバイザー**:
+   - TeraTerm や RS-232C シリアルコンソール経由で作業する保守員のため、最頻出コマンド `ytg status`、プロセス詳細診断 `ytg inspect <name>`、および `ytg restart <name|--all>` をルート直下で提供。
+   - Bash, Zsh, PowerShell, Fish に対する完全なシェル自動補完スクリプト生成（`ytg completion <shell>`）。
+5. **🔄 閉域網向け内蔵型極小ログローテーション & ディスク保護**:
+   - 外部 `logrotate` や `crond` が存在しない産業用PC・アプライアンスでも、標準ライブラリのみで自動ログローテーション（`RotatingWriter`）とバックグラウンド gzip 圧縮を実現。
+   - ディスク使用率が安全閾値（デフォルト 90%）を超過した場合の書き込み抑止・自己保護機能を内蔵。
+6. **🚨 Linux cgroup v2 `memory.events` 監視 & OOM Killer 自律復旧**:
+   - OS カーネルの cgroup v2 インターフェースを監視し、OOM Killer による強制終了を `memory.events` の `oom_kill` カウンタから即座に検知・自動再起動。
+7. **📈 Prometheus 互換 `/metrics` & ネイティブ L4/L7 ヘルスプローブ**:
+   - NIST SP 800-82（OT セキュリティ標準）に準拠し、外部 SaaS 依存ゼロで Prometheus Exposition Format のプレーンテキスト `/metrics` を直接提供。
+   - ロードバランサやコンテナオーケストレータ向けの標準ヘルスチェック（`/healthz`, `/livez`, `/readyz`）を完備。
+8. **🔍 既存サーバーからのマニフェスト作成支援 (KISSホワイトリスト・リバースエンジニアリング)**:
    - 既存サーバーで稼働中の `systemd` サービス、バイナリ、設定ファイルを安全に下見（`survey`）し、不要なものを取捨選択して `manifest.yaml` を確定生成（`generate`）。
    - **Mode A (実体吸い上げ / `--ingest`)**: バイナリや設定ファイルを自動取得して即座にバンドル化可能。
    - **Mode B (デフォルト)**: CI/CD リポジトリの配置を促す `# TODO: <url>` ヒントを出力。
    - **SIRT 安全弁**: 設定ファイル内の機密情報（パスワード・秘密鍵・トークン等）を `<REDACTED_SECRET>` に自動マスキング。
    - **Web UI 連携**: `/ui/discover` からブラウザ上で下見・選択・ワンクリックダウンロード（`manifest.yaml`）が可能。
-7. **📊 組み込み HTMX ダッシュボード & サービスインスペクト (Node.js/npm 完全不要)**:
+9. **📊 組み込み HTMX ダッシュボード & サービスインスペクト (Node.js/npm 完全不要)**:
    - `//go:embed` によりアセット（HTMX、CSS）を Go 単一バイナリに内包。外部 CDN 接続ゼロ。
    - サービス一覧、Desired State、稼働メトリクス、監査ログ、バンドル手動インポートを Web ブラウザから確認可能。
-   - **詳細インスペクトモーダル**: サービスごとのマニフェスト構成、バイナリ権限、`validateCommand`、CAS Blobs 一覧をインプレース展開。
-   - **リアルタイム監査検索**: イベント種別やキーワードによる 300ms デバウンスリアルタイムフィルタリング。
-8. **🤖 初期ブートストラップ Ansible Role**:
+10. **🤖 初期ブートストラップ Ansible Role**:
    - `roles/deploy_agent/` により、ベアメタルや仮想マシンへの `ytagarasu-agent` のバイナリ配置、設定展開、systemd ユニット登録を自動化。
 
 ---
@@ -99,17 +102,37 @@ cd ytagarasu
 make build
 ```
 `bin/` ディレクトリに以下の実行バイナリが生成されます：
+- `bin/ytg`: 軽量ヘッドレス CLI & プロセススーパーバイザー
 - `bin/ytagarasu`: バンドル作成・検証・監査 CLI
 - `bin/ytagarasu-server`: オフライン成果物サーバー & HTMX ダッシュボード
 - `bin/ytagarasu-agent`: ノード常駐デプロイエージェント
 
-### 2. 成果物サーバーの起動
+### 2. 3文字CLI `ytg` によるヘッドレス運用
+```bash
+# シェル自動補完の適用 (Bash の例)
+source <(./bin/ytg completion bash)
+
+# マニフェストに基づくプロセスの自律監視起動
+./bin/ytg supervisor run -c manifest.yaml
+
+# 稼働中プロセスの状態・稼働時間・再起動回数の一覧確認
+./bin/ytg status
+
+# 特定プロセスの詳細メトリクス・設定の診断
+./bin/ytg inspect backend-api
+
+# プロセスの安全な再起動
+./bin/ytg restart backend-api
+```
+
+### 3. 成果物サーバーの起動
 ```bash
 ./bin/ytagarasu-server --listen :8080 --data-dir ./data/server
 ```
 ブラウザで `http://localhost:8080/ui` にアクセスすると、組み込みダッシュボードが表示されます。
+また、Prometheus メトリクスは `http://localhost:8080/metrics`、死活監視プローブは `http://localhost:8080/livez` で取得可能です。
 
-### 3. (任意) 既存サーバーからのマニフェスト自動作成（リバースエンジニアリング）
+### 4. (任意) 既存サーバーからのマニフェスト自動作成（リバースエンジニアリング）
 Web UI（`http://localhost:8080/ui/discover`）のウィザードを使用するか、CLI で既存サーバーの構成を安全に吸い上げます：
 ```bash
 # Step 1: 稼働中サービスの構成を安全に下見 (Read-Only)
@@ -121,12 +144,12 @@ Web UI（`http://localhost:8080/ui/discover`）のウィザードを使用する
 ./bin/ytagarasu discover generate -p discovery-plan.yaml -o manifest.yaml --ingest
 ```
 
-### 4. バンドル署名用の鍵ペア生成
+### 5. バンドル署名用の鍵ペア生成
 ```bash
 ./bin/ytagarasu keygen -d ./keys
 ```
 
-### 5. サンプルバンドルの作成・署名・エクスポート
+### 6. サンプルバンドルの作成・署名・エクスポート
 ```bash
 ./bin/ytagarasu bundle export \
     --manifest examples/manifest.yaml \
@@ -136,14 +159,14 @@ Web UI（`http://localhost:8080/ui/discover`）のウィザードを使用する
     --force
 ```
 
-### 6. サーバーへのバンドルインポート
+### 7. サーバーへのバンドルインポート
 Web UI（`http://localhost:8080/ui`）からファイルをドラッグ＆ドロップするか、curl でアップロードします：
 ```bash
 curl -X POST http://localhost:8080/api/v1/bundles/import \
     -F "bundle=@./bundle-v1.0.0.tar.gz"
 ```
 
-### 7. クライアントエージェントによる適用
+### 8. クライアントエージェントによる適用
 ```bash
 ./bin/ytagarasu-agent \
     --server http://localhost:8080 \
@@ -151,7 +174,7 @@ curl -X POST http://localhost:8080/api/v1/bundles/import \
     --once
 ```
 
-### 8. 監査ハッシュチェーンの改ざん検証
+### 9. 監査ハッシュチェーンの改ざん検証
 ```bash
 ./bin/ytagarasu audit verify --server http://localhost:8080
 ```
