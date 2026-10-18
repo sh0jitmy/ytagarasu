@@ -1,0 +1,62 @@
+name: Air-Gap Isolated Scenario Test Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict_isolation:
+        type: boolean
+        description: 'Enforce strict iptables firewall drop for all outbound internet traffic'
+        required: true
+        default: true
+  schedule:
+    # Run every Monday at 00:00 UTC (09:00 JST)
+    - cron: '0 0 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  airgap-e2e:
+    name: Air-Gap Scenario E2E (Strict Linux Isolation)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Execute Air-Gap Scenario Test Suite
+        id: run_airgap
+        run: |
+          ISOLATE_FLAG=""
+          if [ "${{ github.event.inputs.strict_isolation }}" != "false" ]; then
+            ISOLATE_FLAG="--isolate"
+          fi
+          echo "==> Executing Air-Gap Scenario Test with flags: ${ISOLATE_FLAG}"
+          sudo -E bash scripts/run_airgap_scenario_test.sh ${ISOLATE_FLAG}
+
+      - name: Publish Snapshots and Verdict to GitHub Step Summary
+        if: always()
+        run: |
+          echo "# 🛡️ Air-Gap Isolated Scenario Test Execution" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target**: ytagarasu Server & Agent Autonomous Lifecycle" >> $GITHUB_STEP_SUMMARY
+          echo "- **Strict Firewall Isolation**: iptables DROP outbound 0.0.0.0/0 (Egress Internet Zero)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Execution Mode**: GitHub Actions Workflow Dispatch" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "docs/airgap-scenario-test-report.md" ]; then
+            cat docs/airgap-scenario-test-report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Air-Gap Snapshots and Logs Artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: airgap-scenario-evidence
+          path: test_reports/airgap/
+          retention-days: 30
+
