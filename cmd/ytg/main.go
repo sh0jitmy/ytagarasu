@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -55,6 +56,15 @@ func main() {
 		fmt.Printf("ytg (ytagarasu) v%s (%s/%s)\n", version.Version, runtime.GOOS, runtime.GOARCH)
 		fmt.Println("Air-Gapped Declarative Process Orchestrator & Supervisor.")
 		return
+
+	case "status":
+		handleSupervisorStatus(os.Args[2:])
+
+	case "inspect":
+		handleSupervisorInspect(os.Args[2:])
+
+	case "restart":
+		handleSupervisorRestart(os.Args[2:])
 
 	case "supervisor":
 		handleSupervisor(os.Args[2:])
@@ -178,58 +188,13 @@ func handleSupervisor(args []string) {
 		}
 
 	case "status":
-		state, err := supervisor.LoadState(defaultStatePath)
-		if err != nil {
-			fmt.Println("[ytg supervisor] No active supervisor daemon state found.")
-			fmt.Println("Start one with: ytg supervisor run -c <manifest.yaml>")
-			os.Exit(1)
-		}
+		handleSupervisorStatus(args[1:])
 
-		if len(args) > 1 && args[1] == "--json" {
-			data, _ := json.MarshalIndent(state, "", "  ")
-			fmt.Println(string(data))
-			return
-		}
-
-		fmt.Printf("[ytg supervisor] Manifest: %s (updated: %s)\n", state.ManifestPath, state.UpdatedAt.Format(time.RFC3339))
-		fmt.Printf("%-18s %-7s %-12s %-9s %-11s %s\n", "NAME", "PID", "STATE", "RESTARTS", "STARTED_AT", "COMMAND")
-		fmt.Println("--------------------------------------------------------------------------------")
-		for name, p := range state.Processes {
-			startedStr := "-"
-			if !p.StartedAt.IsZero() {
-				startedStr = p.StartedAt.Format("15:04:05")
-			}
-			fmt.Printf("%-18s %-7d %-12s %-9d %-11s %s\n", name, p.PID, p.State, p.Restarts, startedStr, p.CurrentPath)
-		}
+	case "inspect":
+		handleSupervisorInspect(args[1:])
 
 	case "restart":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: ytg supervisor restart <process-name|--all>")
-			os.Exit(1)
-		}
-		target := args[1]
-
-		state, err := supervisor.LoadState(defaultStatePath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[ytg supervisor error] Cannot restart: state file not found (%v)\n", err)
-			os.Exit(1)
-		}
-
-		if target == "--all" {
-			fmt.Println("[ytg supervisor] Gracefully restarting all supervised processes in manifest...")
-			for name, p := range state.Processes {
-				restartPID(name, p.PID)
-			}
-			fmt.Println("[ytg supervisor] Manifest-wide restart signal dispatched.")
-		} else {
-			p, exists := state.Processes[target]
-			if !exists {
-				fmt.Fprintf(os.Stderr, "[ytg supervisor error] Process '%s' not found in supervisor state\n", target)
-				os.Exit(1)
-			}
-			restartPID(target, p.PID)
-			fmt.Printf("[ytg supervisor] Process '%s' (PID %d) restart signal dispatched.\n", target, p.PID)
-		}
+		handleSupervisorRestart(args[1:])
 
 	case "rollback":
 		target := "--all"
@@ -259,6 +224,105 @@ func handleSupervisor(args []string) {
 	}
 }
 
+func handleSupervisorStatus(args []string) {
+	state, err := supervisor.LoadState(defaultStatePath)
+	if err != nil {
+		fmt.Println("[ytg status] No active supervisor daemon state found.")
+		fmt.Println("Start one with: ytg supervisor run -c <manifest.yaml>")
+		os.Exit(1)
+	}
+
+	if len(args) > 0 && args[0] == "--json" {
+		data, _ := json.MarshalIndent(state, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	fmt.Printf("[ytg status] Manifest: %s (updated: %s)\n", state.ManifestPath, state.UpdatedAt.Format(time.RFC3339))
+	fmt.Printf("%-18s %-7s %-12s %-9s %-11s %s\n", "NAME", "PID", "STATE", "RESTARTS", "STARTED_AT", "COMMAND")
+	fmt.Println("--------------------------------------------------------------------------------")
+	for name, p := range state.Processes {
+		startedStr := "-"
+		if !p.StartedAt.IsZero() {
+			startedStr = p.StartedAt.Format("15:04:05")
+		}
+		fmt.Printf("%-18s %-7d %-12s %-9d %-11s %s\n", name, p.PID, p.State, p.Restarts, startedStr, p.CurrentPath)
+	}
+}
+
+func handleSupervisorInspect(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: ytg inspect <process-name> [--json]")
+		os.Exit(1)
+	}
+
+	targetName := args[0]
+	state, err := supervisor.LoadState(defaultStatePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ytg inspect error] Cannot inspect: state file not found (%v)\n", err)
+		os.Exit(1)
+	}
+
+	p, exists := state.Processes[targetName]
+	if !exists {
+		fmt.Fprintf(os.Stderr, "[ytg inspect error] Process '%s' not found in supervisor state\n", targetName)
+		os.Exit(1)
+	}
+
+	if len(args) > 1 && args[1] == "--json" {
+		data, _ := json.MarshalIndent(p, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	startedStr := "-"
+	uptimeStr := "-"
+	if !p.StartedAt.IsZero() {
+		startedStr = p.StartedAt.Format(time.RFC3339)
+		uptimeStr = time.Since(p.StartedAt).Round(time.Second).String()
+	}
+
+	fmt.Printf("[ytg inspect] Process: %s\n", targetName)
+	fmt.Printf("  PID:          %d\n", p.PID)
+	fmt.Printf("  State:        %s\n", p.State)
+	fmt.Printf("  Restarts:     %d\n", p.Restarts)
+	fmt.Printf("  Started At:   %s (Uptime: %s)\n", startedStr, uptimeStr)
+	fmt.Printf("  Command:      %s\n", p.CurrentPath)
+	fmt.Printf("  Manifest:     %s\n", state.ManifestPath)
+	fmt.Printf("  Last Updated: %s\n", state.UpdatedAt.Format(time.RFC3339))
+}
+
+func handleSupervisorRestart(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: ytg restart <process-name|--all>")
+		os.Exit(1)
+	}
+	target := args[0]
+
+	state, err := supervisor.LoadState(defaultStatePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ytg restart error] Cannot restart: state file not found (%v)\n", err)
+		os.Exit(1)
+	}
+
+	if target == "--all" {
+		fmt.Println("[ytg restart] Gracefully restarting all supervised processes in manifest...")
+		for name, p := range state.Processes {
+			restartPID(name, p.PID)
+		}
+		fmt.Println("[ytg restart] Manifest-wide restart signal dispatched.")
+		return
+	}
+
+	p, exists := state.Processes[target]
+	if !exists {
+		fmt.Fprintf(os.Stderr, "[ytg restart error] Process '%s' not found in supervisor state\n", target)
+		os.Exit(1)
+	}
+	restartPID(target, p.PID)
+	fmt.Printf("[ytg restart] Process '%s' (PID %d) restart signal dispatched.\n", target, p.PID)
+}
+
 func restartPID(name string, pid int) {
 	if pid <= 0 {
 		return
@@ -272,35 +336,49 @@ func restartPID(name string, pid int) {
 }
 
 func printHelp() {
-	fmt.Print(BannerArt)
-	fmt.Println("Usage: ytg <command> [options]")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  supervisor <subcmd>     Manage runtime process supervision and rollback (run, status, restart, rollback)")
-	fmt.Println("  manifest <subcmd>       Manage deployment bundle manifests (init, generate, validate, lint)")
-	fmt.Println("  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
-	fmt.Println("  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
-	fmt.Println("  discover <subcmd>       Interactive server survey and automated manifest discovery (survey, generate)")
-	fmt.Println("  completion <shell>      Generate shell autocompletion script (bash, zsh, powershell, fish)")
-	fmt.Println("  version                 Show binary version and build metadata")
-	fmt.Println("  help                    Show help information")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  ytg supervisor run -c manifest.yaml")
-	fmt.Println("  ytg supervisor status")
-	fmt.Println("  ytg supervisor restart backend-api")
-	fmt.Println("  ytg supervisor restart --all")
-	fmt.Println("  ytg supervisor rollback --all")
-	fmt.Println("  source <(ytg completion bash)")
-	fmt.Println("  ytg completion zsh > ~/.zfunc/_ytg")
+	printHelpTo(os.Stdout)
+}
+
+func printHelpTo(w io.Writer) {
+	_, _ = fmt.Fprint(w, BannerArt)
+	_, _ = fmt.Fprintln(w, "Usage: ytg <command> [options]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Core Commands (Headless Operations):")
+	_, _ = fmt.Fprintln(w, "  status [--json]         Display process PID, health, restarts, and command states")
+	_, _ = fmt.Fprintln(w, "  inspect <name> [--json] Display detailed process metrics, state, and paths")
+	_, _ = fmt.Fprintln(w, "  restart <name|--all>    Gracefully restart a specific process or all processes")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Subsystems:")
+	_, _ = fmt.Fprintln(w, "  supervisor <subcmd>     Manage runtime process daemon (run, status, inspect, restart, rollback)")
+	_, _ = fmt.Fprintln(w, "  manifest <subcmd>       Manage deployment bundle manifests (init, generate, validate, lint)")
+	_, _ = fmt.Fprintln(w, "  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
+	_, _ = fmt.Fprintln(w, "  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
+	_, _ = fmt.Fprintln(w, "  discover <subcmd>       Interactive server survey and automated manifest discovery (survey, generate)")
+	_, _ = fmt.Fprintln(w, "  completion <shell>      Generate shell autocompletion script (bash, zsh, powershell, fish)")
+	_, _ = fmt.Fprintln(w, "  version                 Show binary version and build metadata")
+	_, _ = fmt.Fprintln(w, "  help                    Show help information")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Examples:")
+	_, _ = fmt.Fprintln(w, "  ytg status")
+	_, _ = fmt.Fprintln(w, "  ytg inspect backend-api")
+	_, _ = fmt.Fprintln(w, "  ytg restart backend-api")
+	_, _ = fmt.Fprintln(w, "  ytg restart --all")
+	_, _ = fmt.Fprintln(w, "  ytg supervisor run -c manifest.yaml")
+	_, _ = fmt.Fprintln(w, "  source <(ytg completion bash)")
+	_, _ = fmt.Fprintln(w, "  ytg completion zsh > ~/.zfunc/_ytg")
 }
 
 func printSupervisorHelp() {
-	fmt.Println("Usage: ytg supervisor <subcommand> [options]")
-	fmt.Println()
-	fmt.Println("Subcommands (Manifest & Process Supervision Primitives):")
-	fmt.Println("  run -c <manifest.yaml>   Start supervisor daemon managing declared processes in manifest")
-	fmt.Println("  status [--json]          Display process PID, health, restarts, and command states")
-	fmt.Println("  restart <name|--all>     Gracefully restart a specific process or all processes in manifest")
-	fmt.Println("  rollback <name|--all>    Trigger rollback for a specific process or all processes in manifest")
+	printSupervisorHelpTo(os.Stdout)
+}
+
+func printSupervisorHelpTo(w io.Writer) {
+	_, _ = fmt.Fprintln(w, "Usage: ytg supervisor <subcommand> [options]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Subcommands (Manifest & Process Supervision Primitives):")
+	_, _ = fmt.Fprintln(w, "  run -c <manifest.yaml>   Start supervisor daemon managing declared processes in manifest")
+	_, _ = fmt.Fprintln(w, "  status [--json]          Display process PID, health, restarts, and command states")
+	_, _ = fmt.Fprintln(w, "  inspect <name> [--json]  Display detailed process metrics, state, and paths")
+	_, _ = fmt.Fprintln(w, "  restart <name|--all>     Gracefully restart a specific process or all processes in manifest")
+	_, _ = fmt.Fprintln(w, "  rollback <name|--all>    Trigger rollback for a specific process or all processes in manifest")
 }

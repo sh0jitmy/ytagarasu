@@ -72,7 +72,7 @@ _ytg_completions() {
         cword=$COMP_CWORD
     }
 
-    local commands="supervisor manifest bundle audit discover version completion help"
+    local commands="status inspect restart supervisor manifest bundle audit discover version completion help"
 
     if [ "$cword" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -80,8 +80,17 @@ _ytg_completions() {
     fi
 
     case "${words[1]}" in
+        status)
+            COMPREPLY=( $(compgen -W "--json" -- "$cur") )
+            ;;
+        inspect)
+            COMPREPLY=( $(compgen -W "--json" -- "$cur") )
+            ;;
+        restart)
+            COMPREPLY=( $(compgen -W "--all" -- "$cur") )
+            ;;
         supervisor)
-            local subcmds="run status restart rollback help"
+            local subcmds="run status inspect restart rollback help"
             if [ "$cword" -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "$subcmds" -- "$cur") )
                 return 0
@@ -90,7 +99,7 @@ _ytg_completions() {
                 run)
                     COMPREPLY=( $(compgen -W "-c --config --manifest" -- "$cur") )
                     ;;
-                status)
+                status|inspect)
                     COMPREPLY=( $(compgen -W "--json" -- "$cur") )
                     ;;
                 restart|rollback)
@@ -135,59 +144,73 @@ _ytg_completions() {
             ;;
     esac
 }
+
 complete -F _ytg_completions ytg
 `
 
 const zshCompletion = `#compdef ytg
 
 _ytg() {
-    local -a commands
-    commands=(
-        'supervisor:Manage runtime process supervision and rollback'
-        'manifest:Manage deployment bundle manifests'
-        'bundle:Manage air-gapped deployment packages'
-        'audit:Verify cryptographic hashchain logs'
-        'discover:Interactive server survey and automated manifest discovery'
-        'version:Show binary version and build metadata'
-        'completion:Generate shell autocompletion script'
-        'help:Show help information'
-    )
+    local line state
 
     _arguments -C \
-        '1: :->command' \
-        '*:: :->args'
+        "1: :->command" \
+        "*::arg:->args"
 
     case $state in
         command)
+            local -a commands
+            commands=(
+                'status:Display process status, PID, and health'
+                'inspect:Display detailed process metrics and paths'
+                'restart:Restart a specific process or all processes'
+                'supervisor:Manage runtime process supervision daemon'
+                'manifest:Manage deployment bundle manifests'
+                'bundle:Manage air-gapped deployment packages'
+                'audit:Verify cryptographic hashchain logs'
+                'discover:Interactive server survey and automated manifest discovery'
+                'completion:Generate shell autocompletion script'
+                'version:Show binary version and build metadata'
+                'help:Show help information'
+            )
             _describe -t commands 'ytg command' commands
             ;;
         args)
-            case $words[1] in
+            case $line[1] in
+                status|inspect)
+                    _arguments \
+                        '--json[Output status in JSON format]'
+                    ;;
+                restart)
+                    _arguments \
+                        '--all[Apply to all processes in manifest]'
+                    ;;
                 supervisor)
                     local -a supervisor_cmds
                     supervisor_cmds=(
-                        'run:Start supervisor daemon managing declared processes'
-                        'status:Display process PID, health, restarts, and states'
-                        'restart:Gracefully restart a process or all processes'
-                        'rollback:Trigger rollback for a process or all processes'
+                        'run:Start supervisor daemon'
+                        'status:Display process status'
+                        'inspect:Display detailed process metrics'
+                        'restart:Gracefully restart supervised process'
+                        'rollback:Trigger rollback to previous version'
                         'help:Show supervisor help'
                     )
                     _arguments -C \
-                        '1: :->subcommand' \
-                        '*:: :->subargs'
+                        "1: :->subcommand" \
+                        "*::arg:->subargs"
                     case $state in
                         subcommand)
                             _describe -t supervisor_cmds 'supervisor subcommand' supervisor_cmds
                             ;;
                         subargs)
-                            case $words[2] in
+                            case $line[2] in
                                 run)
                                     _arguments \
                                         {-c,--config,--manifest}'[Path to manifest file]:manifest file:_files'
                                     ;;
-                                status)
+                                status|inspect)
                                     _arguments \
-                                        '--json[Output status as JSON format]'
+                                        '--json[Output status in JSON format]'
                                     ;;
                                 restart|rollback)
                                     _arguments \
@@ -237,8 +260,8 @@ Register-ArgumentCompleter -Native -CommandName 'ytg' -ScriptBlock {
     $elements = $commandAst.Elements
     $count = $elements.Count
 
-    $topCommands = @('supervisor', 'manifest', 'bundle', 'audit', 'discover', 'version', 'completion', 'help')
-    $supervisorCommands = @('run', 'status', 'restart', 'rollback', 'help')
+    $topCommands = @('status', 'inspect', 'restart', 'supervisor', 'manifest', 'bundle', 'audit', 'discover', 'version', 'completion', 'help')
+    $supervisorCommands = @('run', 'status', 'inspect', 'restart', 'rollback', 'help')
     $manifestCommands = @('init', 'generate', 'validate', 'lint', 'help')
     $bundleCommands = @('export', 'diff', 'verify', 'keygen', 'help')
     $auditCommands = @('verify', 'list', 'help')
@@ -255,6 +278,21 @@ Register-ArgumentCompleter -Native -CommandName 'ytg' -ScriptBlock {
     $sub = $elements[1].Extent.Text
     if ($count -eq 3) {
         switch ($sub) {
+            'status' {
+                @('--json') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+            }
+            'inspect' {
+                @('--json') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+            }
+            'restart' {
+                @('--all') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+            }
             'supervisor' {
                 $supervisorCommands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
@@ -302,6 +340,11 @@ Register-ArgumentCompleter -Native -CommandName 'ytg' -ScriptBlock {
                     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
                 }
             }
+            'inspect' {
+                @('--json') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+            }
             'restart' {
                 @('--all') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
@@ -321,6 +364,9 @@ const fishCompletion = `# Fish completion for ytg
 complete -c ytg -f
 
 # Top level commands
+complete -c ytg -n "__fish_use_subcommand" -a status -d "Display process status"
+complete -c ytg -n "__fish_use_subcommand" -a inspect -d "Display detailed process metrics"
+complete -c ytg -n "__fish_use_subcommand" -a restart -d "Restart a process or all"
 complete -c ytg -n "__fish_use_subcommand" -a supervisor -d "Manage runtime process supervision and rollback"
 complete -c ytg -n "__fish_use_subcommand" -a manifest -d "Manage deployment bundle manifests"
 complete -c ytg -n "__fish_use_subcommand" -a bundle -d "Manage air-gapped deployment packages"
@@ -330,12 +376,19 @@ complete -c ytg -n "__fish_use_subcommand" -a version -d "Show binary version an
 complete -c ytg -n "__fish_use_subcommand" -a completion -d "Generate shell autocompletion script"
 complete -c ytg -n "__fish_use_subcommand" -a help -d "Show help information"
 
+# root commands options
+complete -c ytg -n "__fish_seen_subcommand_from status" -l json -d "Output status as JSON"
+complete -c ytg -n "__fish_seen_subcommand_from inspect" -l json -d "Output detailed inspection as JSON"
+complete -c ytg -n "__fish_seen_subcommand_from restart" -l all -d "Restart all processes"
+
 # supervisor subcommands
 complete -c ytg -n "__fish_seen_subcommand_from supervisor" -a run -d "Start supervisor daemon"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor" -a status -d "Display process status"
+complete -c ytg -n "__fish_seen_subcommand_from supervisor" -a inspect -d "Display detailed process metrics"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor" -a restart -d "Restart a process or all"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor" -a rollback -d "Rollback a process or all"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor; and __fish_seen_subcommand_from status" -l json -d "Output status as JSON"
+complete -c ytg -n "__fish_seen_subcommand_from supervisor; and __fish_seen_subcommand_from inspect" -l json -d "Output detailed inspection as JSON"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor; and __fish_seen_subcommand_from restart" -l all -d "Restart all processes"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor; and __fish_seen_subcommand_from rollback" -l all -d "Rollback all processes"
 complete -c ytg -n "__fish_seen_subcommand_from supervisor; and __fish_seen_subcommand_from run" -s c -l config -l manifest -d "Manifest file path"
