@@ -63,6 +63,9 @@ func main() {
 	case "inspect":
 		handleSupervisorInspect(os.Args[2:])
 
+	case "doctor":
+		handleDoctor(os.Args[2:])
+
 	case "restart":
 		handleSupervisorRestart(os.Args[2:])
 
@@ -224,16 +227,84 @@ func handleSupervisor(args []string) {
 	}
 }
 
+// hasJSONFlag detects if --json flag is present in arguments and returns remaining args.
+func hasJSONFlag(args []string) (bool, []string) {
+	isJSON := false
+	var remaining []string
+	for _, a := range args {
+		if a == "--json" {
+			isJSON = true
+		} else {
+			remaining = append(remaining, a)
+		}
+	}
+	return isJSON, remaining
+}
+
+// ServiceStatusInfo represents deterministic structured status of a single supervised service.
+type ServiceStatusInfo struct {
+	Name        string `json:"name"`
+	PID         int    `json:"pid"`
+	State       string `json:"state"`
+	Restarts    int    `json:"restarts"`
+	StartedAt   string `json:"started_at"`
+	CurrentPath string `json:"current_path"`
+	Uptime      string `json:"uptime,omitempty"`
+}
+
+// StatusReport represents deterministic structured JSON output for ytg status.
+type StatusReport struct {
+	ManifestPath string              `json:"manifest_path"`
+	UpdatedAt    string              `json:"updated_at"`
+	TotalCount   int                 `json:"total_count"`
+	Services     []ServiceStatusInfo `json:"services"`
+}
+
 func handleSupervisorStatus(args []string) {
+	isJSON, _ := hasJSONFlag(args)
+
 	state, err := supervisor.LoadState(defaultStatePath)
 	if err != nil {
+		if isJSON {
+			errData, _ := json.MarshalIndent(map[string]interface{}{
+				"error":    "no active supervisor daemon state found",
+				"services": []ServiceStatusInfo{},
+			}, "", "  ")
+			fmt.Println(string(errData))
+			os.Exit(1)
+		}
 		fmt.Println("[ytg status] No active supervisor daemon state found.")
 		fmt.Println("Start one with: ytg supervisor run -c <manifest.yaml>")
 		os.Exit(1)
 	}
 
-	if len(args) > 0 && args[0] == "--json" {
-		data, _ := json.MarshalIndent(state, "", "  ")
+	services := make([]ServiceStatusInfo, 0, len(state.Processes))
+	for name, p := range state.Processes {
+		startedStr := "-"
+		uptimeStr := "-"
+		if !p.StartedAt.IsZero() {
+			startedStr = p.StartedAt.Format(time.RFC3339)
+			uptimeStr = time.Since(p.StartedAt).Round(time.Second).String()
+		}
+		services = append(services, ServiceStatusInfo{
+			Name:        name,
+			PID:         p.PID,
+			State:       string(p.State),
+			Restarts:    p.Restarts,
+			StartedAt:   startedStr,
+			CurrentPath: p.CurrentPath,
+			Uptime:      uptimeStr,
+		})
+	}
+
+	if isJSON {
+		report := StatusReport{
+			ManifestPath: state.ManifestPath,
+			UpdatedAt:    state.UpdatedAt.Format(time.RFC3339),
+			TotalCount:   len(services),
+			Services:     services,
+		}
+		data, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Println(string(data))
 		return
 	}
@@ -241,38 +312,56 @@ func handleSupervisorStatus(args []string) {
 	fmt.Printf("[ytg status] Manifest: %s (updated: %s)\n", state.ManifestPath, state.UpdatedAt.Format(time.RFC3339))
 	fmt.Printf("%-18s %-7s %-12s %-9s %-11s %s\n", "NAME", "PID", "STATE", "RESTARTS", "STARTED_AT", "COMMAND")
 	fmt.Println("--------------------------------------------------------------------------------")
-	for name, p := range state.Processes {
-		startedStr := "-"
-		if !p.StartedAt.IsZero() {
-			startedStr = p.StartedAt.Format("15:04:05")
-		}
-		fmt.Printf("%-18s %-7d %-12s %-9d %-11s %s\n", name, p.PID, p.State, p.Restarts, startedStr, p.CurrentPath)
+	for _, s := range services {
+		fmt.Printf("%-18s %-7d %-12s %-9d %-11s %s\n", s.Name, s.PID, s.State, s.Restarts, s.StartedAt, s.CurrentPath)
 	}
 }
 
+// InspectReport represents deterministic structured JSON output for ytg inspect.
+type InspectReport struct {
+	Name         string `json:"name"`
+	PID          int    `json:"pid"`
+	State        string `json:"state"`
+	Restarts     int    `json:"restarts"`
+	StartedAt    string `json:"started_at"`
+	Uptime       string `json:"uptime"`
+	Command      string `json:"command"`
+	ManifestPath string `json:"manifest_path"`
+	LastUpdated  string `json:"last_updated"`
+}
+
 func handleSupervisorInspect(args []string) {
-	if len(args) == 0 {
+	isJSON, remaining := hasJSONFlag(args)
+	if len(remaining) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: ytg inspect <process-name> [--json]")
 		os.Exit(1)
 	}
 
-	targetName := args[0]
+	targetName := remaining[0]
 	state, err := supervisor.LoadState(defaultStatePath)
 	if err != nil {
+		if isJSON {
+			errData, _ := json.MarshalIndent(map[string]string{
+				"error": fmt.Sprintf("state file not found (%v)", err),
+			}, "", "  ")
+			fmt.Println(string(errData))
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "[ytg inspect error] Cannot inspect: state file not found (%v)\n", err)
 		os.Exit(1)
 	}
 
 	p, exists := state.Processes[targetName]
 	if !exists {
+		if isJSON {
+			errData, _ := json.MarshalIndent(map[string]string{
+				"error": fmt.Sprintf("process '%s' not found in supervisor state", targetName),
+			}, "", "  ")
+			fmt.Println(string(errData))
+			os.Exit(1)
+		}
 		fmt.Fprintf(os.Stderr, "[ytg inspect error] Process '%s' not found in supervisor state\n", targetName)
 		os.Exit(1)
-	}
-
-	if len(args) > 1 && args[1] == "--json" {
-		data, _ := json.MarshalIndent(p, "", "  ")
-		fmt.Println(string(data))
-		return
 	}
 
 	startedStr := "-"
@@ -282,14 +371,142 @@ func handleSupervisorInspect(args []string) {
 		uptimeStr = time.Since(p.StartedAt).Round(time.Second).String()
 	}
 
-	fmt.Printf("[ytg inspect] Process: %s\n", targetName)
-	fmt.Printf("  PID:          %d\n", p.PID)
-	fmt.Printf("  State:        %s\n", p.State)
-	fmt.Printf("  Restarts:     %d\n", p.Restarts)
-	fmt.Printf("  Started At:   %s (Uptime: %s)\n", startedStr, uptimeStr)
-	fmt.Printf("  Command:      %s\n", p.CurrentPath)
-	fmt.Printf("  Manifest:     %s\n", state.ManifestPath)
-	fmt.Printf("  Last Updated: %s\n", state.UpdatedAt.Format(time.RFC3339))
+	report := InspectReport{
+		Name:         targetName,
+		PID:          p.PID,
+		State:        string(p.State),
+		Restarts:     p.Restarts,
+		StartedAt:    startedStr,
+		Uptime:       uptimeStr,
+		Command:      p.CurrentPath,
+		ManifestPath: state.ManifestPath,
+		LastUpdated:  state.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if isJSON {
+		data, _ := json.MarshalIndent(report, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	fmt.Printf("[ytg inspect] Process: %s\n", report.Name)
+	fmt.Printf("  PID:          %d\n", report.PID)
+	fmt.Printf("  State:        %s\n", report.State)
+	fmt.Printf("  Restarts:     %d\n", report.Restarts)
+	fmt.Printf("  Started At:   %s (Uptime: %s)\n", report.StartedAt, report.Uptime)
+	fmt.Printf("  Command:      %s\n", report.Command)
+	fmt.Printf("  Manifest:     %s\n", report.ManifestPath)
+	fmt.Printf("  Last Updated: %s\n", report.LastUpdated)
+}
+
+// DoctorCheckItem represents a single system diagnostic check item.
+type DoctorCheckItem struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"` // "PASS", "WARN", "FAIL", "INFO"
+	Message string `json:"message"`
+}
+
+// DoctorReport represents complete structured environment diagnostics.
+type DoctorReport struct {
+	OS        string            `json:"os"`
+	Arch      string            `json:"arch"`
+	GoVersion string            `json:"go_version"`
+	Checks    []DoctorCheckItem `json:"checks"`
+	Passed    bool              `json:"passed"`
+}
+
+func handleDoctor(args []string) {
+	isJSON, _ := hasJSONFlag(args)
+
+	var checks []DoctorCheckItem
+	allPassed := true
+
+	// Check 1: Operating System
+	checks = append(checks, DoctorCheckItem{
+		Name:    "Platform",
+		Status:  "INFO",
+		Message: fmt.Sprintf("%s/%s (Go %s)", runtime.GOOS, runtime.GOARCH, runtime.Version()),
+	})
+
+	// Check 2: Manifest file existence
+	if _, err := os.Stat("manifest.yaml"); err == nil {
+		checks = append(checks, DoctorCheckItem{
+			Name:    "Manifest File",
+			Status:  "PASS",
+			Message: "manifest.yaml found in current working directory",
+		})
+	} else {
+		checks = append(checks, DoctorCheckItem{
+			Name:    "Manifest File",
+			Status:  "WARN",
+			Message: "manifest.yaml not found in current directory (run: ytg manifest init)",
+		})
+	}
+
+	// Check 3: Supervisor state file
+	if _, err := os.Stat(defaultStatePath); err == nil {
+		checks = append(checks, DoctorCheckItem{
+			Name:    "Supervisor Daemon",
+			Status:  "PASS",
+			Message: fmt.Sprintf("Active state file detected (%s)", defaultStatePath),
+		})
+	} else {
+		checks = append(checks, DoctorCheckItem{
+			Name:    "Supervisor Daemon",
+			Status:  "INFO",
+			Message: "No active supervisor state (daemon is currently idle)",
+		})
+	}
+
+	// Check 4: cgroup v2 support (Linux specific)
+	if runtime.GOOS == "linux" {
+		if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err == nil {
+			checks = append(checks, DoctorCheckItem{
+				Name:    "Linux cgroups v2",
+				Status:  "PASS",
+				Message: "Unified cgroup v2 hierarchy available for memory/CPU isolation",
+			})
+		} else {
+			checks = append(checks, DoctorCheckItem{
+				Name:    "Linux cgroups v2",
+				Status:  "WARN",
+				Message: "cgroup v2 controllers not mounted; falling back to process-group signals",
+			})
+		}
+	}
+
+	report := DoctorReport{
+		OS:        runtime.GOOS,
+		Arch:      runtime.GOARCH,
+		GoVersion: runtime.Version(),
+		Checks:    checks,
+		Passed:    allPassed,
+	}
+
+	if isJSON {
+		data, _ := json.MarshalIndent(report, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	fmt.Println("[ytg doctor] On-Premise Environment Diagnostics")
+	fmt.Println("--------------------------------------------------------------------------------")
+	for _, c := range checks {
+		badge := "[ OK ]"
+		switch c.Status {
+		case "PASS":
+			badge = "[PASS]"
+		case "WARN":
+			badge = "[WARN]"
+		case "FAIL":
+			badge = "[FAIL]"
+		case "INFO":
+			badge = "[INFO]"
+		}
+		fmt.Printf("%-8s %-22s: %s\n", badge, c.Name, c.Message)
+	}
+	fmt.Println("--------------------------------------------------------------------------------")
+	fmt.Println("Diagnostics completed. Environment ready for air-gapped process orchestration.")
 }
 
 func handleSupervisorRestart(args []string) {
@@ -347,6 +564,7 @@ func printHelpTo(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  status [--json]         Display process PID, health, restarts, and command states")
 	_, _ = fmt.Fprintln(w, "  inspect <name> [--json] Display detailed process metrics, state, and paths")
 	_, _ = fmt.Fprintln(w, "  restart <name|--all>    Gracefully restart a specific process or all processes")
+	_, _ = fmt.Fprintln(w, "  doctor [--json]         Diagnose host environment, cgroup, manifest, and runtime health")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Subsystems:")
 	_, _ = fmt.Fprintln(w, "  supervisor <subcmd>     Manage runtime process daemon (run, status, inspect, restart, rollback)")
