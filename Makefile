@@ -103,6 +103,10 @@ ytagarasu-e2e: build
 	@echo "==> Running ytagarasu Multi-Tier Agent-Server & HTMX UI E2E tests..."
 	@bash scripts/ytagarasu_e2e.sh
 
+airgap-test: build
+	@echo "==> Running Air-Gap Scenario E2E test suite..."
+	@bash scripts/run_airgap_scenario_test.sh
+
 matrix-test: build
 	@echo "==> Running Full Package Matrix E2E tests (APT, DNF, Pip, Docker)..."
 	@bash scripts/run_package_matrix.sh
