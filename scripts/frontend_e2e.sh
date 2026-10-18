@@ -120,11 +120,14 @@ echo -e "\n${YELLOW}[Step 5/5] Running Headless Chrome E2E Verification & Snapsh
 WEB_URL="http://127.0.0.1:${WEB_PORT}" CORE_URL="http://127.0.0.1:${SERVER_PORT}" \
     python3 -u scripts/test_frontend_ui.py
 
-# 6. Ensure Package Matrix report and Unified Portal are generated
+# 6. Ensure Package Matrix report, ytagarasu UI report, and Unified Portal are generated
 if [ ! -f "$REPORT_DIR/matrix_test_report.html" ]; then
     echo -e "${YELLOW}Generating package matrix report for GitHub Pages...${NC}"
     python3 scripts/generate_matrix_report.py || true
 fi
+
+echo -e "${YELLOW}Generating default ytagarasu UI & Manifest Discovery E2E report...${NC}"
+python3 scripts/test_ytagarasu_ui.py || true
 
 echo -e "${YELLOW}Generating unified E2E portal (index.html)...${NC}"
 python3 scripts/generate_e2e_portal.py
