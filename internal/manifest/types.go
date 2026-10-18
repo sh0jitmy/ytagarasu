@@ -162,6 +162,7 @@ type PackageItem struct {
 // PackageTarget defines target-specific package repository configuration.
 type PackageTarget struct {
 	Manager   string        `json:"manager" yaml:"manager"` // apt, dnf, yum, pip, docker, dewy
+	RepoURL   string        `json:"repoUrl,omitempty" yaml:"repoUrl,omitempty"`
 	Order     int           `json:"order,omitempty" yaml:"order,omitempty"`
 	DependsOn []string      `json:"dependsOn,omitempty" yaml:"dependsOn,omitempty"`
 	Items     []PackageItem `json:"items" yaml:"items"`
