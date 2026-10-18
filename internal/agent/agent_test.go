@@ -200,3 +200,185 @@ applications:
 	assert.Equal(t, "payment-api-1.1.0-200", reportedLogs[1].ReleaseID)
 	mu.Unlock()
 }
+
+func TestAgent_SignatureGuard(t *testing.T) {
+	t.Parallel()
+
+	pubHex, privHex, err := manifest.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+
+	manifestYAML := []byte(`
+version: "1.0"
+bundleVersion: "2026.10.19.1"
+release: "2.0.0"
+targets:
+  - os: "ubuntu"
+    release: "24.04"
+    arch: "amd64"
+applications:
+  - name: "secure-api"
+    type: "golang"
+    artifact: "artifacts/golang/secure-api"
+    destination: "bin/secure-api"
+    permissions: "0755"
+`)
+
+	sigHex, err := manifest.SignData(privHex, manifestYAML)
+	require.NoError(t, err)
+
+	t.Run("Valid signature allows deployment", func(t *testing.T) {
+		t.Parallel()
+		workDir := t.TempDir()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v1/services/secure-api/desired":
+				w.Header().Set("Content-Type", "application/x-yaml")
+				w.Header().Set("X-Release-ID", "rel-2.0.0")
+				w.Header().Set("X-Manifest-Signature", sigHex)
+				_, _ = w.Write(manifestYAML)
+			case "/repos/secure-api/artifacts/golang/secure-api":
+				w.Header().Set("Content-Type", "application/octet-stream")
+				_, _ = w.Write([]byte(`#!/bin/sh\necho secure running\n`))
+			case "/api/v1/audit/logs":
+				w.WriteHeader(http.StatusOK)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		cfg := agent.Config{
+			ServerURL:        server.URL,
+			ServiceID:        "secure-api",
+			StateFile:        filepath.Join(workDir, "state.json"),
+			LockFile:         filepath.Join(workDir, "agent.lock"),
+			InstallDir:       workDir,
+			TrustedPublicKey: pubHex,
+			RequireSignature: true,
+		}
+
+		ag := agent.NewAgent(cfg, nil)
+		rep, err := ag.StepOnce(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, rep)
+		assert.True(t, rep.Success)
+		assert.Equal(t, "rel-2.0.0", rep.ReleaseID)
+	})
+
+	t.Run("Tampered manifest rejects deployment", func(t *testing.T) {
+		t.Parallel()
+		workDir := t.TempDir()
+
+		tamperedYAML := []byte(`
+version: "1.0"
+bundleVersion: "2026.10.19.1"
+release: "2.0.0"
+applications:
+  - name: "secure-api"
+    type: "golang"
+    artifact: "artifacts/golang/secure-api"
+    destination: "bin/secure-api"
+    permissions: "0755"
+    malicious_cmd: "curl http://evil.lan"
+`)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v1/services/secure-api/desired":
+				w.Header().Set("Content-Type", "application/x-yaml")
+				w.Header().Set("X-Release-ID", "rel-2.0.0-tampered")
+				w.Header().Set("X-Manifest-Signature", sigHex) // Signature does not match tamperedYAML
+				_, _ = w.Write(tamperedYAML)
+			case "/api/v1/audit/logs":
+				w.WriteHeader(http.StatusOK)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		cfg := agent.Config{
+			ServerURL:        server.URL,
+			ServiceID:        "secure-api",
+			StateFile:        filepath.Join(workDir, "state.json"),
+			LockFile:         filepath.Join(workDir, "agent.lock"),
+			InstallDir:       workDir,
+			TrustedPublicKey: pubHex,
+			RequireSignature: true,
+		}
+
+		ag := agent.NewAgent(cfg, nil)
+		rep, err := ag.StepOnce(context.Background())
+		require.Error(t, err)
+		require.ErrorIs(t, err, manifest.ErrSignatureMismatch)
+		require.NotNil(t, rep)
+		assert.False(t, rep.Success)
+		assert.Contains(t, rep.ErrorMessage, "security verification failed")
+	})
+
+	t.Run("Missing signature rejects when RequireSignature is true", func(t *testing.T) {
+		t.Parallel()
+		workDir := t.TempDir()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v1/services/secure-api/desired":
+				w.Header().Set("Content-Type", "application/x-yaml")
+				w.Header().Set("X-Release-ID", "rel-2.0.0-unsigned")
+				// No X-Manifest-Signature header
+				_, _ = w.Write(manifestYAML)
+			case "/api/v1/audit/logs":
+				w.WriteHeader(http.StatusOK)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+
+		cfg := agent.Config{
+			ServerURL:        server.URL,
+			ServiceID:        "secure-api",
+			StateFile:        filepath.Join(workDir, "state.json"),
+			LockFile:         filepath.Join(workDir, "agent.lock"),
+			InstallDir:       workDir,
+			TrustedPublicKey: pubHex,
+			RequireSignature: true,
+		}
+
+		ag := agent.NewAgent(cfg, nil)
+		rep, err := ag.StepOnce(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "signature is missing")
+		require.NotNil(t, rep)
+		assert.False(t, rep.Success)
+	})
+
+	t.Run("VerifyLocalManifestFile", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		manifestPath := filepath.Join(tmpDir, "manifest.yaml")
+		sigPath := filepath.Join(tmpDir, "manifest.yaml.sig")
+		pubPath := filepath.Join(tmpDir, "trusted.pub")
+
+		require.NoError(t, os.WriteFile(manifestPath, manifestYAML, 0600))
+		require.NoError(t, os.WriteFile(sigPath, []byte(sigHex+"\n"), 0600))
+		require.NoError(t, os.WriteFile(pubPath, []byte(pubHex+"\n"), 0600))
+
+		cfg := agent.Config{
+			TrustedPublicKey: pubPath,
+			RequireSignature: true,
+		}
+		ag := agent.NewAgent(cfg, nil)
+
+		err := ag.VerifyLocalManifestFile(manifestPath, sigPath)
+		require.NoError(t, err)
+
+		// Tampering test
+		require.NoError(t, os.WriteFile(manifestPath, []byte("tampered content"), 0600))
+		err = ag.VerifyLocalManifestFile(manifestPath, sigPath)
+		require.Error(t, err)
+		require.ErrorIs(t, err, manifest.ErrSignatureMismatch)
+	})
+}
