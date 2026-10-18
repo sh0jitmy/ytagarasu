@@ -18,7 +18,11 @@ package agent_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sh0jitmy/ytagarasu/internal/agent"
@@ -94,10 +98,17 @@ func TestAptPackageManager(t *testing.T) {
 		runner := &fakeRunner{}
 		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
 
+		tmpDir := t.TempDir()
+		debPath := filepath.Join(tmpDir, "app_1.0.0.deb")
+		debContent := []byte("fake-deb-binary-payload")
+		require.NoError(t, os.WriteFile(debPath, debContent, 0600))
+		h := sha256.Sum256(debContent)
+		hashHex := hex.EncodeToString(h[:])
+
 		pkgs := []manifest.PackageItem{
 			{Name: "curl", Version: "7.88.1"},
 			{Name: "git", Version: ""},
-			{Name: "/var/cache/app_1.0.0.deb", Version: ""},
+			{Name: debPath, SHA256: hashHex},
 		}
 
 		err := mgr.InstallPackages(context.Background(), pkgs)
@@ -107,8 +118,63 @@ func TestAptPackageManager(t *testing.T) {
 		assert.Equal(t, []string{
 			"install", "-y", "--no-install-recommends", "--allow-unauthenticated",
 			"-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1",
-			"curl=7.88.1", "git", "/var/cache/app_1.0.0.deb",
+			"curl=7.88.1", "git", debPath,
 		}, runner.calls[0].args)
+	})
+
+	t.Run("InstallLocalPackage direct", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
+
+		tmpDir := t.TempDir()
+		debPath := filepath.Join(tmpDir, "service_1.0.0.deb")
+		debContent := []byte("service-deb-bytes")
+		require.NoError(t, os.WriteFile(debPath, debContent, 0600))
+		h := sha256.Sum256(debContent)
+		hashHex := hex.EncodeToString(h[:])
+
+		err := mgr.InstallLocalPackage(context.Background(), debPath, hashHex)
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "apt-get", runner.calls[0].name)
+		assert.Equal(t, []string{
+			"install", "-y", "--no-install-recommends", "--allow-unauthenticated",
+			"-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1",
+			debPath,
+		}, runner.calls[0].args)
+	})
+
+	t.Run("InstallLocalPackage checksum mismatch", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
+
+		tmpDir := t.TempDir()
+		debPath := filepath.Join(tmpDir, "tampered.deb")
+		require.NoError(t, os.WriteFile(debPath, []byte("tampered-content"), 0600))
+
+		err := mgr.InstallLocalPackage(context.Background(), debPath, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+		require.Error(t, err)
+		require.ErrorIs(t, err, agent.ErrChecksumMismatch)
+	})
+
+	t.Run("InstallLocalPackage file not found or empty", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
+
+		tmpDir := t.TempDir()
+		missingDeb := filepath.Join(tmpDir, "missing.deb")
+		err := mgr.InstallLocalPackage(context.Background(), missingDeb, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "local package file not found")
+
+		emptyDeb := filepath.Join(tmpDir, "empty.deb")
+		require.NoError(t, os.WriteFile(emptyDeb, []byte{}, 0600))
+		err = mgr.InstallLocalPackage(context.Background(), emptyDeb, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is empty")
 	})
 
 	t.Run("InstallPackages with sudo", func(t *testing.T) {
@@ -183,17 +249,43 @@ func TestRpmPackageManager(t *testing.T) {
 		runner := &fakeRunner{}
 		mgr := agent.NewRpmPackageManager(runner).WithSudo(false)
 
+		tmpDir := t.TempDir()
+		rpmPath := filepath.Join(tmpDir, "custom.rpm")
+		rpmContent := []byte("dummy-rpm-payload")
+		require.NoError(t, os.WriteFile(rpmPath, rpmContent, 0600))
+		h := sha256.Sum256(rpmContent)
+		hashHex := hex.EncodeToString(h[:])
+
 		pkgs := []manifest.PackageItem{
 			{Name: "nginx", Version: "1.24"},
 			{Name: "sqlite", Version: ""},
-			{Name: "./packages/custom.rpm", Version: ""},
+			{Name: rpmPath, SHA256: hashHex},
 		}
 
 		err := mgr.InstallPackages(context.Background(), pkgs)
 		require.NoError(t, err)
 		require.Len(t, runner.calls, 1)
 		assert.Equal(t, "dnf", runner.calls[0].name)
-		assert.Equal(t, []string{"install", "-y", "--nogpgcheck", "nginx-1.24", "sqlite", "./packages/custom.rpm"}, runner.calls[0].args)
+		assert.Equal(t, []string{"install", "-y", "--nogpgcheck", "nginx-1.24", "sqlite", rpmPath}, runner.calls[0].args)
+	})
+
+	t.Run("InstallLocalPackage direct", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewRpmPackageManager(runner).WithSudo(false)
+
+		tmpDir := t.TempDir()
+		rpmPath := filepath.Join(tmpDir, "service-1.0.0.rpm")
+		rpmContent := []byte("service-rpm-bytes")
+		require.NoError(t, os.WriteFile(rpmPath, rpmContent, 0600))
+		h := sha256.Sum256(rpmContent)
+		hashHex := hex.EncodeToString(h[:])
+
+		err := mgr.InstallLocalPackage(context.Background(), rpmPath, hashHex)
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "dnf", runner.calls[0].name)
+		assert.Equal(t, []string{"install", "-y", "--nogpgcheck", rpmPath}, runner.calls[0].args)
 	})
 }
 
@@ -283,6 +375,22 @@ func TestMultiPackageManagerAndFactory(t *testing.T) {
 
 	// Dispatch to unknown fallback
 	err = multi.InstallForManager(context.Background(), "unknown", []manifest.PackageItem{{Name: "bash"}})
+	require.NoError(t, err)
+	assert.Equal(t, "apt-get", runner.calls[len(runner.calls)-1].name)
+
+	// Dispatch DirectInstaller to APT
+	tmpDir := t.TempDir()
+	localDeb := filepath.Join(tmpDir, "local.deb")
+	require.NoError(t, os.WriteFile(localDeb, []byte("pkg-bytes"), 0600))
+	hDeb := sha256.Sum256([]byte("pkg-bytes"))
+	hDebHex := hex.EncodeToString(hDeb[:])
+
+	err = multi.InstallLocalPackage(context.Background(), "apt", localDeb, hDebHex)
+	require.NoError(t, err)
+	assert.Equal(t, "apt-get", runner.calls[len(runner.calls)-1].name)
+
+	// Dispatch DirectInstaller to unknown manager fallback
+	err = multi.InstallLocalPackage(context.Background(), "nonexistent", localDeb, hDebHex)
 	require.NoError(t, err)
 	assert.Equal(t, "apt-get", runner.calls[len(runner.calls)-1].name)
 

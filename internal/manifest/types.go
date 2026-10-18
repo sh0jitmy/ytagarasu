@@ -155,7 +155,8 @@ type Application struct {
 // PackageItem defines a required OS package item.
 type PackageItem struct {
 	Name     string   `json:"name" yaml:"name"`
-	Version  string   `json:"version" yaml:"version"`
+	Version  string   `json:"version,omitempty" yaml:"version,omitempty"`
+	SHA256   string   `json:"sha256,omitempty" yaml:"sha256,omitempty"`
 	Selector Selector `json:"selector,omitempty" yaml:"selector,omitempty"`
 }
 
