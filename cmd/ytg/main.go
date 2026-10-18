@@ -75,7 +75,24 @@ func main() {
 	case "completion":
 		handleCompletion(os.Args[2:])
 
-	case "manifest", "bundle", "audit", "discover":
+	case "manifest":
+		if len(os.Args) > 2 && os.Args[2] == "init" {
+			handleManifestInit(os.Args[3:])
+			return
+		}
+		// Transparently delegate to ytagarasu binary if available
+		//nolint:gosec // Intentional delegation to sibling ytagarasu command
+		cmd := exec.Command("ytagarasu", os.Args[1:]...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "[ytg delegation error] failed to execute 'ytagarasu manifest': %v\n", err)
+			os.Exit(1)
+		}
+		return
+
+	case "bundle", "audit", "discover":
 		// Transparently delegate to ytagarasu binary if available
 		//nolint:gosec // Intentional delegation to sibling ytagarasu command
 		cmd := exec.Command("ytagarasu", os.Args[1:]...)
