@@ -18,9 +18,14 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -53,6 +58,69 @@ func ElevateCommand(useSudo bool, name string, args ...string) (string, []string
 	newArgs = append(newArgs, "-n", name)
 	newArgs = append(newArgs, args...)
 	return "sudo", newArgs
+}
+
+// ErrChecksumMismatch is returned when the local package hash does not match expected SHA-256.
+var ErrChecksumMismatch = errors.New("package checksum mismatch")
+
+// DirectInstaller is implemented by package managers that support direct local package file installation.
+type DirectInstaller interface {
+	InstallLocalPackage(ctx context.Context, filePath string, expectedSHA256 string) error
+}
+
+// IsLocalPackage returns true if the package target represents a local filesystem package file (.deb/.rpm or path).
+func IsLocalPackage(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	clean := filepath.Clean(name)
+	ext := strings.ToLower(filepath.Ext(clean))
+	if ext == ".deb" || ext == ".rpm" {
+		return true
+	}
+	if strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "./") || strings.HasPrefix(clean, "../") {
+		return true
+	}
+	return false
+}
+
+func validateLocalPackage(p manifest.PackageItem) error {
+	targetPath := strings.TrimSpace(p.Name)
+	if targetPath == "" {
+		return errors.New("empty package file path")
+	}
+	cleanPath := filepath.Clean(targetPath)
+
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		return fmt.Errorf("local package file not found: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("local package path '%s' is a directory", cleanPath)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("local package file '%s' is empty", cleanPath)
+	}
+
+	if p.SHA256 != "" {
+		f, err := os.Open(cleanPath)
+		if err != nil {
+			return fmt.Errorf("failed to open package file for checksum: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return fmt.Errorf("failed to compute package checksum: %w", err)
+		}
+		actual := hex.EncodeToString(h.Sum(nil))
+		expected := strings.ToLower(strings.TrimSpace(p.SHA256))
+		if actual != expected {
+			return fmt.Errorf("%w for '%s': expected %s, got %s", ErrChecksumMismatch, cleanPath, expected, actual)
+		}
+	}
+	return nil
 }
 
 // PackageManager abstracts OS package installation.
@@ -136,8 +204,11 @@ func (a *AptPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 		if name == "" {
 			continue
 		}
-		if strings.HasSuffix(name, ".deb") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "./") {
-			pkgNames = append(pkgNames, name)
+		if IsLocalPackage(name) {
+			if err := validateLocalPackage(p); err != nil {
+				return err
+			}
+			pkgNames = append(pkgNames, filepath.Clean(name))
 			continue
 		}
 		if p.Version != "" {
@@ -161,6 +232,32 @@ func (a *AptPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 	out, err := a.runner.Run(ctx, env, cmdName, args...)
 	if err != nil {
 		return fmt.Errorf("apt-get install failed: %w (output: %s)", err, string(out))
+	}
+	return nil
+}
+
+// InstallLocalPackage validates and directly installs a local .deb package.
+func (a *AptPackageManager) InstallLocalPackage(ctx context.Context, filePath string, expectedSHA256 string) error {
+	item := manifest.PackageItem{
+		Name:   filePath,
+		SHA256: expectedSHA256,
+	}
+	if err := validateLocalPackage(item); err != nil {
+		return err
+	}
+	cleanPath := filepath.Clean(filePath)
+
+	rawArgs := []string{
+		"install", "-y", "--no-install-recommends", "--allow-unauthenticated",
+		"-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1",
+		cleanPath,
+	}
+	cmdName, args := ElevateCommand(a.useSudo, "apt-get", rawArgs...)
+	env := []string{"DEBIAN_FRONTEND=noninteractive"}
+
+	out, err := a.runner.Run(ctx, env, cmdName, args...)
+	if err != nil {
+		return fmt.Errorf("apt-get direct install failed for '%s': %w (output: %s)", cleanPath, err, string(out))
 	}
 	return nil
 }
@@ -232,8 +329,11 @@ func (r *RpmPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 		if name == "" {
 			continue
 		}
-		if strings.HasSuffix(name, ".rpm") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "./") {
-			pkgNames = append(pkgNames, name)
+		if IsLocalPackage(name) {
+			if err := validateLocalPackage(p); err != nil {
+				return err
+			}
+			pkgNames = append(pkgNames, filepath.Clean(name))
 			continue
 		}
 		if p.Version != "" {
@@ -253,6 +353,27 @@ func (r *RpmPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 	out, err := r.runner.Run(ctx, nil, cmdName, args...)
 	if err != nil {
 		return fmt.Errorf("dnf install failed: %w (output: %s)", err, string(out))
+	}
+	return nil
+}
+
+// InstallLocalPackage validates and directly installs a local .rpm package.
+func (r *RpmPackageManager) InstallLocalPackage(ctx context.Context, filePath string, expectedSHA256 string) error {
+	item := manifest.PackageItem{
+		Name:   filePath,
+		SHA256: expectedSHA256,
+	}
+	if err := validateLocalPackage(item); err != nil {
+		return err
+	}
+	cleanPath := filepath.Clean(filePath)
+
+	rawArgs := []string{"install", "-y", "--nogpgcheck", cleanPath}
+	cmdName, args := ElevateCommand(r.useSudo, "dnf", rawArgs...)
+
+	out, err := r.runner.Run(ctx, nil, cmdName, args...)
+	if err != nil {
+		return fmt.Errorf("dnf direct install failed for '%s': %w (output: %s)", cleanPath, err, string(out))
 	}
 	return nil
 }
@@ -472,6 +593,21 @@ func (m *MultiPackageManager) InstallForManager(ctx context.Context, managerName
 		return fmt.Errorf("no package manager registered for '%s'", managerName)
 	}
 	return mgr.InstallPackages(ctx, pkgs)
+}
+
+// InstallLocalPackage delegates direct package installation to a manager supporting DirectInstaller.
+func (m *MultiPackageManager) InstallLocalPackage(ctx context.Context, managerName string, filePath string, expectedSHA256 string) error {
+	mgr, ok := m.managers[strings.ToLower(strings.TrimSpace(managerName))]
+	if !ok {
+		if installer, isInstaller := m.fallback.(DirectInstaller); isInstaller {
+			return installer.InstallLocalPackage(ctx, filePath, expectedSHA256)
+		}
+		return fmt.Errorf("no package manager registered for '%s'", managerName)
+	}
+	if installer, isInstaller := mgr.(DirectInstaller); isInstaller {
+		return installer.InstallLocalPackage(ctx, filePath, expectedSHA256)
+	}
+	return fmt.Errorf("package manager '%s' does not support direct package installation", managerName)
 }
 
 // NewPackageManager returns a default PackageManager implementation for the given manager type.
