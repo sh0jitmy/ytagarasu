@@ -44,29 +44,79 @@ func (r *DefaultRunner) Run(ctx context.Context, env []string, name string, args
 	return cmd.CombinedOutput()
 }
 
+// ElevateCommand prepends sudo -n to a command if useSudo is true.
+func ElevateCommand(useSudo bool, name string, args ...string) (string, []string) {
+	if !useSudo {
+		return name, args
+	}
+	newArgs := make([]string, 0, len(args)+2)
+	newArgs = append(newArgs, "-n", name)
+	newArgs = append(newArgs, args...)
+	return "sudo", newArgs
+}
+
 // PackageManager abstracts OS package installation.
 type PackageManager interface {
 	UpdateRepositories(ctx context.Context) error
 	InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error
 }
 
+// RepositoryConfigurable is an optional interface implemented by package managers
+// that support dynamic configuration of offline repository mirrors.
+type RepositoryConfigurable interface {
+	ConfigureRepository(ctx context.Context, repoURL string, trusted bool) error
+}
+
 // AptPackageManager manages Debian/Ubuntu APT packages non-interactively.
 type AptPackageManager struct {
-	runner CommandRunner
+	runner  CommandRunner
+	useSudo bool
 }
 
 // NewAptPackageManager constructs an AptPackageManager.
+// Non-root executions automatically enable sudo escalation with non-interactive flag.
 func NewAptPackageManager(runner CommandRunner) *AptPackageManager {
 	if runner == nil {
 		runner = &DefaultRunner{}
 	}
-	return &AptPackageManager{runner: runner}
+	return &AptPackageManager{
+		runner:  runner,
+		useSudo: os.Geteuid() != 0,
+	}
 }
 
-// UpdateRepositories runs `apt-get update`.
+// WithSudo explicitly configures whether sudo escalation is enabled.
+func (a *AptPackageManager) WithSudo(enabled bool) *AptPackageManager {
+	a.useSudo = enabled
+	return a
+}
+
+// ConfigureRepository configures an offline or local APT repository in /etc/apt/sources.list.d/ytagarasu.list.
+func (a *AptPackageManager) ConfigureRepository(ctx context.Context, repoURL string, trusted bool) error {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return nil
+	}
+	trustOpt := ""
+	if trusted {
+		trustOpt = "[trusted=yes] "
+	}
+	entry := fmt.Sprintf("deb %s%s stable main\n", trustOpt, repoURL)
+	targetFile := "/etc/apt/sources.list.d/ytagarasu.list"
+
+	cmdName, args := ElevateCommand(a.useSudo, "sh", "-c", fmt.Sprintf("printf \x27%%s\x27 \x22%s\x22 | tee %s", entry, targetFile))
+	out, err := a.runner.Run(ctx, nil, cmdName, args...)
+	if err != nil {
+		return fmt.Errorf("failed to configure apt repository at %s: %w (output: %s)", targetFile, err, string(out))
+	}
+	return nil
+}
+
+// UpdateRepositories runs `apt-get update` with timeout protection.
 func (a *AptPackageManager) UpdateRepositories(ctx context.Context) error {
 	env := []string{"DEBIAN_FRONTEND=noninteractive"}
-	out, err := a.runner.Run(ctx, env, "apt-get", "update", "-qq")
+	cmdName, args := ElevateCommand(a.useSudo, "apt-get", "update", "-qq", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1")
+	out, err := a.runner.Run(ctx, env, cmdName, args...)
 	if err != nil {
 		return fmt.Errorf("apt-get update failed: %w (output: %s)", err, string(out))
 	}
@@ -74,6 +124,7 @@ func (a *AptPackageManager) UpdateRepositories(ctx context.Context) error {
 }
 
 // InstallPackages runs `apt-get install -y --no-install-recommends <packages...>`.
+// Supports direct local .deb file paths without needing a remote repository.
 func (a *AptPackageManager) InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error {
 	if len(pkgs) == 0 {
 		return nil
@@ -83,6 +134,10 @@ func (a *AptPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 	for _, p := range pkgs {
 		name := strings.TrimSpace(p.Name)
 		if name == "" {
+			continue
+		}
+		if strings.HasSuffix(name, ".deb") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "./") {
+			pkgNames = append(pkgNames, name)
 			continue
 		}
 		if p.Version != "" {
@@ -96,10 +151,14 @@ func (a *AptPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 		return nil
 	}
 
-	args := append([]string{"install", "-y", "--no-install-recommends", "--allow-unauthenticated"}, pkgNames...)
+	rawArgs := append([]string{
+		"install", "-y", "--no-install-recommends", "--allow-unauthenticated",
+		"-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1",
+	}, pkgNames...)
+	cmdName, args := ElevateCommand(a.useSudo, "apt-get", rawArgs...)
 	env := []string{"DEBIAN_FRONTEND=noninteractive"}
 
-	out, err := a.runner.Run(ctx, env, "apt-get", args...)
+	out, err := a.runner.Run(ctx, env, cmdName, args...)
 	if err != nil {
 		return fmt.Errorf("apt-get install failed: %w (output: %s)", err, string(out))
 	}
@@ -108,7 +167,8 @@ func (a *AptPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 
 // RpmPackageManager manages RedHat/CentOS/Rocky DNF packages.
 type RpmPackageManager struct {
-	runner CommandRunner
+	runner  CommandRunner
+	useSudo bool
 }
 
 // NewRpmPackageManager constructs an RpmPackageManager.
@@ -116,12 +176,43 @@ func NewRpmPackageManager(runner CommandRunner) *RpmPackageManager {
 	if runner == nil {
 		runner = &DefaultRunner{}
 	}
-	return &RpmPackageManager{runner: runner}
+	return &RpmPackageManager{
+		runner:  runner,
+		useSudo: os.Geteuid() != 0,
+	}
+}
+
+// WithSudo explicitly configures whether sudo escalation is enabled.
+func (r *RpmPackageManager) WithSudo(enabled bool) *RpmPackageManager {
+	r.useSudo = enabled
+	return r
+}
+
+// ConfigureRepository configures an offline or local YUM/DNF repository in /etc/yum.repos.d/ytagarasu.repo.
+func (r *RpmPackageManager) ConfigureRepository(ctx context.Context, repoURL string, trusted bool) error {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return nil
+	}
+	gpgCheck := "1"
+	if trusted {
+		gpgCheck = "0"
+	}
+	entry := fmt.Sprintf("[ytagarasu]\nname=Ytagarasu Offline Repository\nbaseurl=%s\nenabled=1\ngpgcheck=%s\ntimeout=10\n", repoURL, gpgCheck)
+	targetFile := "/etc/yum.repos.d/ytagarasu.repo"
+
+	cmdName, args := ElevateCommand(r.useSudo, "sh", "-c", fmt.Sprintf("printf \x27%%s\x27 \x22%s\x22 | tee %s", entry, targetFile))
+	out, err := r.runner.Run(ctx, nil, cmdName, args...)
+	if err != nil {
+		return fmt.Errorf("failed to configure rpm repository at %s: %w (output: %s)", targetFile, err, string(out))
+	}
+	return nil
 }
 
 // UpdateRepositories runs `dnf makecache`.
 func (r *RpmPackageManager) UpdateRepositories(ctx context.Context) error {
-	out, err := r.runner.Run(ctx, nil, "dnf", "makecache", "-y", "-q")
+	cmdName, args := ElevateCommand(r.useSudo, "dnf", "makecache", "-y", "-q")
+	out, err := r.runner.Run(ctx, nil, cmdName, args...)
 	if err != nil {
 		return fmt.Errorf("dnf makecache failed: %w (output: %s)", err, string(out))
 	}
@@ -129,6 +220,7 @@ func (r *RpmPackageManager) UpdateRepositories(ctx context.Context) error {
 }
 
 // InstallPackages runs `dnf install -y <packages...>`.
+// Supports direct local .rpm file paths without needing a remote repository.
 func (r *RpmPackageManager) InstallPackages(ctx context.Context, pkgs []manifest.PackageItem) error {
 	if len(pkgs) == 0 {
 		return nil
@@ -138,6 +230,10 @@ func (r *RpmPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 	for _, p := range pkgs {
 		name := strings.TrimSpace(p.Name)
 		if name == "" {
+			continue
+		}
+		if strings.HasSuffix(name, ".rpm") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "./") {
+			pkgNames = append(pkgNames, name)
 			continue
 		}
 		if p.Version != "" {
@@ -151,8 +247,10 @@ func (r *RpmPackageManager) InstallPackages(ctx context.Context, pkgs []manifest
 		return nil
 	}
 
-	args := append([]string{"install", "-y", "--nogpgcheck"}, pkgNames...)
-	out, err := r.runner.Run(ctx, nil, "dnf", args...)
+	rawArgs := append([]string{"install", "-y", "--nogpgcheck"}, pkgNames...)
+	cmdName, args := ElevateCommand(r.useSudo, "dnf", rawArgs...)
+
+	out, err := r.runner.Run(ctx, nil, cmdName, args...)
 	if err != nil {
 		return fmt.Errorf("dnf install failed: %w (output: %s)", err, string(out))
 	}
@@ -323,6 +421,21 @@ func NewMultiPackageManager(fallback PackageManager) *MultiPackageManager {
 // Register registers a manager implementation for a given manager name (e.g. "apt", "dnf", "pip", "docker", "dewy").
 func (m *MultiPackageManager) Register(name string, mgr PackageManager) {
 	m.managers[strings.ToLower(strings.TrimSpace(name))] = mgr
+}
+
+// ConfigureRepository dispatches repository configuration to managers implementing RepositoryConfigurable.
+func (m *MultiPackageManager) ConfigureRepository(ctx context.Context, managerName string, repoURL string, trusted bool) error {
+	mgr, ok := m.managers[strings.ToLower(strings.TrimSpace(managerName))]
+	if !ok {
+		if conf, isConf := m.fallback.(RepositoryConfigurable); isConf {
+			return conf.ConfigureRepository(ctx, repoURL, trusted)
+		}
+		return nil
+	}
+	if conf, ok := mgr.(RepositoryConfigurable); ok {
+		return conf.ConfigureRepository(ctx, repoURL, trusted)
+	}
+	return nil
 }
 
 // UpdateRepositories updates all registered repositories.

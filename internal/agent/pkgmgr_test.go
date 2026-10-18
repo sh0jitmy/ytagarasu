@@ -51,54 +51,100 @@ func (f *fakeRunner) Run(ctx context.Context, env []string, name string, args ..
 func TestAptPackageManager(t *testing.T) {
 	t.Parallel()
 
-	t.Run("UpdateRepositories", func(t *testing.T) {
+	t.Run("UpdateRepositories without sudo", func(t *testing.T) {
 		t.Parallel()
 		runner := &fakeRunner{}
-		mgr := agent.NewAptPackageManager(runner)
+		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
 
 		err := mgr.UpdateRepositories(context.Background())
 		require.NoError(t, err)
 		require.Len(t, runner.calls, 1)
+		assert.Equal(t, []string{"DEBIAN_FRONTEND=noninteractive"}, runner.calls[0].env)
 		assert.Equal(t, "apt-get", runner.calls[0].name)
-		assert.Equal(t, []string{"update", "-qq"}, runner.calls[0].args)
-		assert.Contains(t, runner.calls[0].env, "DEBIAN_FRONTEND=noninteractive")
+		assert.Equal(t, []string{"update", "-qq", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1"}, runner.calls[0].args)
 	})
 
-	t.Run("InstallPackages with versions", func(t *testing.T) {
+	t.Run("UpdateRepositories with sudo escalation", func(t *testing.T) {
 		t.Parallel()
 		runner := &fakeRunner{}
-		mgr := agent.NewAptPackageManager(runner)
+		mgr := agent.NewAptPackageManager(runner).WithSudo(true)
+
+		err := mgr.UpdateRepositories(context.Background())
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "sudo", runner.calls[0].name)
+		assert.Equal(t, []string{"-n", "apt-get", "update", "-qq", "-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1"}, runner.calls[0].args)
+	})
+
+	t.Run("ConfigureRepository", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(true)
+
+		err := mgr.ConfigureRepository(context.Background(), "http://10.0.0.1:18090/repos/billing/apt/", true)
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "sudo", runner.calls[0].name)
+		assert.Contains(t, runner.calls[0].args[3], "[trusted=yes] http://10.0.0.1:18090/repos/billing/apt/")
+		assert.Contains(t, runner.calls[0].args[3], "/etc/apt/sources.list.d/ytagarasu.list")
+	})
+
+	t.Run("InstallPackages with versions and local deb", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
 
 		pkgs := []manifest.PackageItem{
 			{Name: "curl", Version: "7.88.1"},
 			{Name: "git", Version: ""},
+			{Name: "/var/cache/app_1.0.0.deb", Version: ""},
 		}
 
 		err := mgr.InstallPackages(context.Background(), pkgs)
 		require.NoError(t, err)
 		require.Len(t, runner.calls, 1)
 		assert.Equal(t, "apt-get", runner.calls[0].name)
-		assert.Equal(t, []string{"install", "-y", "--no-install-recommends", "--allow-unauthenticated", "curl=7.88.1", "git"}, runner.calls[0].args)
+		assert.Equal(t, []string{
+			"install", "-y", "--no-install-recommends", "--allow-unauthenticated",
+			"-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1",
+			"curl=7.88.1", "git", "/var/cache/app_1.0.0.deb",
+		}, runner.calls[0].args)
+	})
+
+	t.Run("InstallPackages with sudo", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(true)
+
+		err := mgr.InstallPackages(context.Background(), []manifest.PackageItem{{Name: "htop"}})
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "sudo", runner.calls[0].name)
+		assert.Equal(t, []string{
+			"-n", "apt-get", "install", "-y", "--no-install-recommends", "--allow-unauthenticated",
+			"-o", "Acquire::http::Timeout=10", "-o", "Acquire::Retries=1", "htop",
+		}, runner.calls[0].args)
 	})
 
 	t.Run("InstallPackages failure", func(t *testing.T) {
 		t.Parallel()
-		runner := &fakeRunner{err: errors.New("exit status 100"), out: []byte("E: Unable to locate package")}
-		mgr := agent.NewAptPackageManager(runner)
+		runner := &fakeRunner{err: errors.New("broken package"), out: []byte("E: Unable to locate package")}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(false)
 
 		err := mgr.InstallPackages(context.Background(), []manifest.PackageItem{{Name: "nonexistent"}})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "apt-get install failed")
+		assert.Contains(t, err.Error(), "Unable to locate package")
 	})
 }
 
 func TestRpmPackageManager(t *testing.T) {
 	t.Parallel()
 
-	t.Run("UpdateRepositories", func(t *testing.T) {
+	t.Run("UpdateRepositories without sudo", func(t *testing.T) {
 		t.Parallel()
 		runner := &fakeRunner{}
-		mgr := agent.NewRpmPackageManager(runner)
+		mgr := agent.NewRpmPackageManager(runner).WithSudo(false)
 
 		err := mgr.UpdateRepositories(context.Background())
 		require.NoError(t, err)
@@ -107,21 +153,47 @@ func TestRpmPackageManager(t *testing.T) {
 		assert.Equal(t, []string{"makecache", "-y", "-q"}, runner.calls[0].args)
 	})
 
-	t.Run("InstallPackages", func(t *testing.T) {
+	t.Run("UpdateRepositories with sudo", func(t *testing.T) {
 		t.Parallel()
 		runner := &fakeRunner{}
-		mgr := agent.NewRpmPackageManager(runner)
+		mgr := agent.NewRpmPackageManager(runner).WithSudo(true)
+
+		err := mgr.UpdateRepositories(context.Background())
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "sudo", runner.calls[0].name)
+		assert.Equal(t, []string{"-n", "dnf", "makecache", "-y", "-q"}, runner.calls[0].args)
+	})
+
+	t.Run("ConfigureRepository", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewRpmPackageManager(runner).WithSudo(true)
+
+		err := mgr.ConfigureRepository(context.Background(), "http://10.0.0.1:18090/repos/billing/rpm/", true)
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "sudo", runner.calls[0].name)
+		assert.Contains(t, runner.calls[0].args[3], "baseurl=http://10.0.0.1:18090/repos/billing/rpm/")
+		assert.Contains(t, runner.calls[0].args[3], "/etc/yum.repos.d/ytagarasu.repo")
+	})
+
+	t.Run("InstallPackages with rpm path", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewRpmPackageManager(runner).WithSudo(false)
 
 		pkgs := []manifest.PackageItem{
 			{Name: "nginx", Version: "1.24"},
 			{Name: "sqlite", Version: ""},
+			{Name: "./packages/custom.rpm", Version: ""},
 		}
 
 		err := mgr.InstallPackages(context.Background(), pkgs)
 		require.NoError(t, err)
 		require.Len(t, runner.calls, 1)
 		assert.Equal(t, "dnf", runner.calls[0].name)
-		assert.Equal(t, []string{"install", "-y", "--nogpgcheck", "nginx-1.24", "sqlite"}, runner.calls[0].args)
+		assert.Equal(t, []string{"install", "-y", "--nogpgcheck", "nginx-1.24", "sqlite", "./packages/custom.rpm"}, runner.calls[0].args)
 	})
 }
 
@@ -182,13 +254,20 @@ func TestMultiPackageManagerAndFactory(t *testing.T) {
 	t.Parallel()
 
 	runner := &fakeRunner{}
-	multi := agent.NewMultiPackageManager(agent.NewAptPackageManager(runner))
-	multi.Register("dnf", agent.NewRpmPackageManager(runner))
+	aptMgr := agent.NewAptPackageManager(runner).WithSudo(false)
+	rpmMgr := agent.NewRpmPackageManager(runner).WithSudo(false)
+	multi := agent.NewMultiPackageManager(aptMgr)
+	multi.Register("apt", aptMgr)
+	multi.Register("dnf", rpmMgr)
 	multi.Register("pip", agent.NewPipPackageManager(runner, "python3", "/wheels"))
 	multi.Register("docker", agent.NewDockerPackageManager(runner))
 
+	// ConfigureRepository dispatch
+	err := multi.ConfigureRepository(context.Background(), "apt", "http://mirror.lan/apt", true)
+	require.NoError(t, err)
+
 	// Dispatch to DNF
-	err := multi.InstallForManager(context.Background(), "dnf", []manifest.PackageItem{{Name: "htop"}})
+	err = multi.InstallForManager(context.Background(), "dnf", []manifest.PackageItem{{Name: "htop"}})
 	require.NoError(t, err)
 	assert.Equal(t, "dnf", runner.calls[len(runner.calls)-1].name)
 
@@ -254,11 +333,11 @@ func TestEmptyPackages(t *testing.T) {
 	runner := &fakeRunner{}
 	ctx := context.Background()
 
-	apt := agent.NewAptPackageManager(runner)
+	apt := agent.NewAptPackageManager(runner).WithSudo(false)
 	require.NoError(t, apt.InstallPackages(ctx, nil))
 	require.NoError(t, apt.InstallPackages(ctx, []manifest.PackageItem{{Name: " "}}))
 
-	rpm := agent.NewRpmPackageManager(runner)
+	rpm := agent.NewRpmPackageManager(runner).WithSudo(false)
 	require.NoError(t, rpm.InstallPackages(ctx, nil))
 
 	pip := agent.NewPipPackageManager(runner, "", "")
