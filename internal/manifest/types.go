@@ -162,11 +162,16 @@ type PackageItem struct {
 
 // PackageTarget defines target-specific package repository configuration.
 type PackageTarget struct {
-	Manager   string        `json:"manager" yaml:"manager"` // apt, dnf, yum, pip, docker, dewy
-	RepoURL   string        `json:"repoUrl,omitempty" yaml:"repoUrl,omitempty"`
-	Order     int           `json:"order,omitempty" yaml:"order,omitempty"`
-	DependsOn []string      `json:"dependsOn,omitempty" yaml:"dependsOn,omitempty"`
-	Items     []PackageItem `json:"items" yaml:"items"`
+	Manager    string        `json:"manager" yaml:"manager"` // apt, dnf, yum, pip, docker, dewy
+	RepoURL    string        `json:"repoUrl,omitempty" yaml:"repoUrl,omitempty"`
+	RepoName   string        `json:"repoName,omitempty" yaml:"repoName,omitempty"`
+	Suite      string        `json:"suite,omitempty" yaml:"suite,omitempty"`
+	Components []string      `json:"components,omitempty" yaml:"components,omitempty"`
+	GPGKeyURL  string        `json:"gpgKeyUrl,omitempty" yaml:"gpgKeyUrl,omitempty"`
+	Trusted    *bool         `json:"trusted,omitempty" yaml:"trusted,omitempty"`
+	Order      int           `json:"order,omitempty" yaml:"order,omitempty"`
+	DependsOn  []string      `json:"dependsOn,omitempty" yaml:"dependsOn,omitempty"`
+	Items      []PackageItem `json:"items" yaml:"items"`
 }
 
 // Certificate defines application server TLS certificate management.
