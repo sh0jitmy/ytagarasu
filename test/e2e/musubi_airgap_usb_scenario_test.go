@@ -71,8 +71,8 @@ func TestMusubi_Airgap_USBSimulationScenario(t *testing.T) {
 	// 1-2. Export Docker Container Tar Images to USB media (simulating `docker save`)
 	pgTarPath := filepath.Join(usbImagesDir, "postgres.tar")
 	grafanaTarPath := filepath.Join(usbImagesDir, "grafana.tar")
-	require.NoError(t, os.WriteFile(pgTarPath, []byte("tar-archive-postgres:16-alpine-simulated"), 0600))
-	require.NoError(t, os.WriteFile(grafanaTarPath, []byte("tar-archive-grafana:10.4.0-simulated"), 0600))
+	createValidDummyTar(t, pgTarPath, "postgres:16-alpine")
+	createValidDummyTar(t, grafanaTarPath, "grafana:10.4.0")
 
 	// 1-3. Generate Air-Gapped Manifest for USB Media
 	pgPort := getFreePort(t)
@@ -455,4 +455,22 @@ func createTarGz(t *testing.T, sourceDir, archivePath string) {
 		return copyErr
 	})
 	require.NoError(t, err)
+}
+
+func createValidDummyTar(t *testing.T, path string, imageName string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	tw := tar.NewWriter(f)
+	defer func() { _ = tw.Close() }()
+
+	manifestJSON := fmt.Sprintf(`[{"Config":"config.json","RepoTags":["%s"],"Layers":["layer.tar"]}]`, imageName)
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name: "manifest.json",
+		Mode: 0600,
+		Size: int64(len(manifestJSON)),
+	}))
+	_, _ = tw.Write([]byte(manifestJSON))
 }
