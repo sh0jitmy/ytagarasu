@@ -1,0 +1,159 @@
+name: Musubi Air-Gapped Deployment & Dashboard E2E Scenario
+
+on:
+  push:
+    branches: [ main, "feature/*" ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  musubi-scenario-test:
+    name: Musubi Deployment & Dashboard Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ytagarasu
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Checkout Musubi (External On-Premise OSS)
+        run: |
+          echo "==> Cloning sh0jitmy/Musubi repository..."
+          git clone --depth 1 https://github.com/sh0jitmy/Musubi.git /tmp/Musubi
+
+      - name: Build Musubi Core Server & Web Frontend Binaries
+        run: |
+          echo "==> Compiling Musubi standalone binaries..."
+          cd /tmp/Musubi
+          mkdir -p bin
+          go build -v -o bin/musubi-server ./cmd/musubi-server
+          go build -v -o bin/musubi-web ./cmd/musubi-web
+          ls -la bin/
+
+      - name: Build ytg CLI Binary
+        run: |
+          mkdir -p bin
+          go build -v -o bin/ytg ./cmd/ytg
+
+      - name: Run Go E2E Musubi Scenario Tests (Standalone & FullStack with Postgres & Grafana)
+        env:
+          MUSUBI_SERVER_BIN: /tmp/Musubi/bin/musubi-server
+          MUSUBI_WEB_BIN: /tmp/Musubi/bin/musubi-web
+        run: |
+          echo "==> Executing Go E2E Scenario Tests for Musubi..."
+          go test -v -run "TestMusubi_" ./test/e2e
+
+      - name: Run Real CLI-Driven Musubi Full-Stack Deployment & Verification
+        run: |
+          echo "==> Testing Real ytg CLI Deployment Workflow..."
+          WORK_DIR=/tmp/musubi-cli-e2e
+          mkdir -p "${WORK_DIR}/logs" "${WORK_DIR}/data"
+
+          # 1. Generate Ed25519 Signing Keypair
+          ./bin/ytg manifest keygen -o "${WORK_DIR}/deploy"
+
+          # 2. Prepare deployment manifest targeting compiled Musubi binaries
+          cat << MANIFEST > "${WORK_DIR}/manifest.yaml"
+          version: "1.0"
+          metadata:
+            name: "musubi-enterprise-stack"
+            description: "Musubi Orchestration with PostgreSQL and Grafana"
+          packages:
+            apt:
+              manager: "apt"
+              order: 1
+              items:
+                - name: "postgresql-16"
+                  version: "16*"
+                - name: "grafana"
+                  version: "10*"
+          processes:
+            - name: "musubi-server"
+              binary: "/tmp/Musubi/bin/musubi-server"
+              work_dir: "${WORK_DIR}"
+              env:
+                PORT: "18080"
+                SNMP_TRAP_PORT: "10162"
+                DATABASE_DRIVER: "sqlite3"
+                DATABASE_DSN: "${WORK_DIR}/musubi.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+                BACKUP_ENABLED: "false"
+              auto_restart: true
+              max_retries: 3
+              listen_port: 18080
+              health_endpoint: "http://127.0.0.1:18080/v1/system/healthz"
+              log_path: "${WORK_DIR}/logs/musubi-server.log"
+              log_max_size_mb: 10
+              log_max_backups: 2
+            - name: "musubi-web"
+              binary: "/tmp/Musubi/bin/musubi-web"
+              work_dir: "${WORK_DIR}"
+              env:
+                PORT: "13001"
+                MUSUBI_API_URL: "http://127.0.0.1:18080"
+              auto_restart: true
+              max_retries: 3
+              listen_port: 13001
+              health_endpoint: "http://127.0.0.1:13001/healthz"
+              log_path: "${WORK_DIR}/logs/musubi-web.log"
+              log_max_size_mb: 10
+              log_max_backups: 2
+          MANIFEST
+
+          # 3. Sign manifest with Ed25519 key and output signature file
+          ./bin/ytg manifest sign "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.key" -o "${WORK_DIR}/manifest.yaml.sig"
+
+          # 4. Verify cryptographic signature
+          ./bin/ytg manifest verify "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.pub"
+
+          # 5. Start ytg supervisor daemon in background
+          echo "==> Starting ytg supervisor in background..."
+          (cd "${WORK_DIR}" && "${GITHUB_WORKSPACE}/bin/ytg" supervisor run -c "${WORK_DIR}/manifest.yaml") > "${WORK_DIR}/supervisor.log" 2>&1 &
+          SUPERVISOR_PID=$!
+
+          # 6. Wait for Musubi Core Server & Web Frontend readiness
+          echo "==> Waiting for services readiness..."
+          for i in {1..30}; do
+            if curl -s -f http://127.0.0.1:13001/healthz > /dev/null; then
+              echo "==> Musubi Web Frontend is healthy!"
+              break
+            fi
+            sleep 1
+          done
+
+          # 7. Check ytg status & integrity
+          echo "==> Checking ytg supervisor status..."
+          (cd "${WORK_DIR}" && "${GITHUB_WORKSPACE}/bin/ytg" status)
+          (cd "${WORK_DIR}" && "${GITHUB_WORKSPACE}/bin/ytg" status --json)
+
+          # 8. Verify Musubi Dashboard rendering & capture HTML snapshot
+          echo "==> Verifying Musubi Web Dashboard HTML rendering..."
+          curl -s -f http://127.0.0.1:13001/ > "${WORK_DIR}/musubi-dashboard-live.html"
+
+          echo "==> Validating critical Dashboard keywords..."
+          grep -q "Musubi Dashboard" "${WORK_DIR}/musubi-dashboard-live.html"
+          grep -q "統合監視ダッシュボード" "${WORK_DIR}/musubi-dashboard-live.html"
+          grep -q "システムリソース & SNMP帯域" "${WORK_DIR}/musubi-dashboard-live.html"
+          grep -q "ターゲットインベントリ & 死活ステータス" "${WORK_DIR}/musubi-dashboard-live.html"
+          echo "==> Musubi Dashboard rendered successfully with all required HTMX/UI components!"
+
+          # 9. Clean shutdown of supervisor daemon
+          kill -TERM "${SUPERVISOR_PID}" || true
+          wait "${SUPERVISOR_PID}" 2>/dev/null || true
+
+          # Move artifacts for upload
+          mkdir -p artifacts
+          cp "${WORK_DIR}/musubi-dashboard-live.html" artifacts/
+          cp "${WORK_DIR}/supervisor.log" artifacts/
+          cp "${WORK_DIR}/logs/"*.log artifacts/
+
+      - name: Upload Dashboard Snapshot & Logs Artifacts
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: musubi-dashboard-e2e-artifacts
+          path: artifacts/

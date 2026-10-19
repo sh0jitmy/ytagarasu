@@ -1,0 +1,93 @@
+version: "1.0"
+metadata:
+  name: "musubi-autonomous-network"
+  description: "Musubi Standalone Network Orchestration & Telemetry Dashboard with PostgreSQL & Grafana"
+  environment: "air-gapped-onpremise"
+
+packages:
+  apt:
+    manager: "apt"
+    order: 1
+    items:
+      - name: "postgresql-16"
+        version: "16*"
+      - name: "grafana"
+        version: "10*"
+  dnf:
+    manager: "dnf"
+    order: 1
+    items:
+      - name: "postgresql-server"
+      - name: "grafana"
+
+processes:
+  - name: postgres
+    binary: /usr/lib/postgresql/16/bin/postgres
+    args: ["-D", "/var/lib/postgresql/16/main", "-c", "config_file=/etc/postgresql/16/main/postgresql.conf"]
+    work_dir: /var/lib/postgresql
+    auto_restart: true
+    max_retries: 5
+    listen_port: 5432
+    health_endpoint: "http://127.0.0.1:5432"
+    rollback_on_error: true
+    escape_hatch_mode: true
+    log_path: "./logs/postgres.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+    log_compress: true
+
+  - name: musubi-server
+    binary: ./bin/musubi-server
+    work_dir: .
+    env:
+      PORT: "18080"
+      SNMP_TRAP_PORT: "10162"
+      DATABASE_DRIVER: "postgres"
+      DATABASE_DSN: "postgres://musubi:musubi_secret@127.0.0.1:5432/musubi?sslmode=disable"
+      BACKUP_ENABLED: "false"
+    auto_restart: true
+    max_retries: 5
+    listen_port: 18080
+    health_endpoint: "http://127.0.0.1:18080/v1/system/healthz"
+    rollback_on_error: true
+    escape_hatch_mode: true
+    log_path: "./logs/musubi-server.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+    log_compress: true
+
+  - name: musubi-web
+    binary: ./bin/musubi-web
+    work_dir: .
+    env:
+      PORT: "13001"
+      MUSUBI_API_URL: "http://127.0.0.1:18080"
+    auto_restart: true
+    max_retries: 5
+    listen_port: 13001
+    health_endpoint: "http://127.0.0.1:13001/healthz"
+    rollback_on_error: true
+    escape_hatch_mode: true
+    log_path: "./logs/musubi-web.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+    log_compress: true
+
+  - name: grafana
+    binary: /usr/sbin/grafana-server
+    args: ["--homepath=/usr/share/grafana", "--config=/etc/grafana/grafana.ini"]
+    work_dir: /usr/share/grafana
+    env:
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    auto_restart: true
+    max_retries: 5
+    listen_port: 3000
+    health_endpoint: "http://127.0.0.1:3000/api/health"
+    rollback_on_error: true
+    escape_hatch_mode: true
+    log_path: "./logs/grafana.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+    log_compress: true
