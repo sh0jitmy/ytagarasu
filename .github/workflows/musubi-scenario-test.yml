@@ -92,8 +92,8 @@ jobs:
               log_max_backups: 2
           MANIFEST
 
-          # 3. Sign manifest with Ed25519 key
-          ./bin/ytg manifest sign "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.key"
+          # 3. Sign manifest with Ed25519 key and output signature file
+          ./bin/ytg manifest sign "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.key" -o "${WORK_DIR}/manifest.yaml.sig"
 
           # 4. Verify cryptographic signature
           ./bin/ytg manifest verify "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.pub"
