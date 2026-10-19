@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -112,6 +113,11 @@ func BuildBundle(opts BuildOptions) (*manifest.PreparationResult, error) {
 		return nil, fmt.Errorf("failed to read manifest for signing: %w", err)
 	}
 	signature := SignData(privKey, manifestBytes)
+
+	// Auto-export container images if defined in manifest and not yet saved
+	if exportErr := autoExportContainers(cleanSourceDir, m.Containers); exportErr != nil {
+		return nil, fmt.Errorf("failed auto-exporting container images: %w", exportErr)
+	}
 
 	// Create temporary staging directory for bundle contents
 	stageDir, err := os.MkdirTemp("", "ytagarasu-bundle-*")
@@ -262,4 +268,50 @@ func hashFileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// autoExportContainers inspects declarative containers in the manifest,
+// and automatically invokes `docker save` for any images that do not yet have an offline tar archive.
+func autoExportContainers(sourceDir string, containers []manifest.ContainerSpec) error {
+	if len(containers) == 0 {
+		return nil
+	}
+
+	for _, ctr := range containers {
+		if ctr.Image == "" {
+			continue
+		}
+		archiveRel := ctr.ImageArchive
+		if archiveRel == "" {
+			archiveRel = filepath.Join("images", fmt.Sprintf("%s.tar", ctr.Name))
+		}
+		archivePath := filepath.Join(sourceDir, archiveRel)
+		cleanPath := filepath.Clean(archivePath)
+
+		// If archive already exists, skip docker save
+		if _, err := os.Stat(cleanPath); err == nil {
+			continue
+		}
+
+		// Ensure parent directory exists
+		if err := os.MkdirAll(filepath.Dir(cleanPath), 0750); err != nil {
+			return fmt.Errorf("failed creating directory for container image %s: %w", ctr.Name, err)
+		}
+
+		// Check if docker CLI is available on staging host
+		if _, err := exec.LookPath("docker"); err != nil {
+			// Docker not available, proceed without auto-save
+			continue
+		}
+
+		// Execute docker save <image> -o <cleanPath>
+		//nolint:gosec // Safe execution of docker save with cleaned destination path
+		cmd := exec.Command("docker", "save", ctr.Image, "-o", cleanPath)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("auto-exporting container image %s (%s) failed: %w (output: %s)",
+				ctr.Name, ctr.Image, err, string(out))
+		}
+	}
+	return nil
 }

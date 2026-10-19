@@ -90,6 +90,9 @@ func main() {
 			case "verify":
 				handleManifestVerify(os.Args[3:])
 				return
+			case "convert":
+				handleManifestConvert(os.Args[3:])
+				return
 			}
 		}
 		// Transparently delegate to ytagarasu binary if available
@@ -642,7 +645,7 @@ func printHelpTo(w io.Writer) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Subsystems:")
 	_, _ = fmt.Fprintln(w, "  supervisor <subcmd>     Manage runtime process daemon (run, status, inspect, restart, rollback)")
-	_, _ = fmt.Fprintln(w, "  manifest <subcmd>       Manage deployment manifests (init, keygen, sign, verify, validate, lint)")
+	_, _ = fmt.Fprintln(w, "  manifest <subcmd>       Manage deployment manifests (init, keygen, sign, verify, convert, validate, lint)")
 	_, _ = fmt.Fprintln(w, "  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
 	_, _ = fmt.Fprintln(w, "  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
 	_, _ = fmt.Fprintln(w, "  discover <subcmd>       Interactive server survey and automated manifest discovery (survey, generate)")
