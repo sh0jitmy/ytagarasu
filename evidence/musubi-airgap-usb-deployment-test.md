@@ -35,26 +35,47 @@ targets:
   - os: "linux"
     release: "ubuntu-24.04"
     arch: "amd64"
-packages:
-  container-images:
-    manager: "docker"
-    order: 1
-    items:
-      - name: "images/postgres.tar"
-        version: "16-alpine"
-      - name: "images/grafana.tar"
-        version: "10.4.0"
-processes:
+applications:
+  - name: "musubi-server"
+    type: "golang"
+    destination: "/opt/musubi/bin/musubi-server"
+  - name: "musubi-web"
+    type: "htmx"
+    destination: "/opt/musubi/bin/musubi-web"
+# 1. ファーストクラスコンテナ定義 (ポート・ボリューム・ネットワーク・自動ロード完備)
+containers:
   - name: "postgres-container"
-    binary: "docker"
-    args: ["run", "-p", "5432:5432", "postgres:16-alpine"]
+    image: "postgres:16-alpine"
+    imageArchive: "images/postgres.tar"
+    ports: ["5432:5432"]
+    volumes: ["./data/postgres:/var/lib/postgresql/data"]
+    environment:
+      POSTGRES_DB: "musubi"
+      POSTGRES_USER: "musubi"
+      POSTGRES_PASSWORD: "secretpassword"
+    network: "bridge"
+    restartPolicy: "always"
   - name: "grafana-container"
-    binary: "docker"
-    args: ["run", "-p", "3000:3000", "grafana/grafana:10.4.0"]
+    image: "grafana/grafana:10.4.0"
+    imageArchive: "images/grafana.tar"
+    ports: ["3000:3000"]
+    network: "bridge"
+    restartPolicy: "always"
+    healthEndpoint: "http://127.0.0.1:3000/api/health"
+# 2. ネイティブプロセス定義 (Goバイナリ)
+processes:
   - name: "musubi-server"
     binary: "artifacts/musubi-server"
+    auto_restart: true
+    max_retries: 3
+    listen_port: 18080
+    health_endpoint: "http://127.0.0.1:18080/v1/system/healthz"
   - name: "musubi-web"
     binary: "artifacts/musubi-web"
+    auto_restart: true
+    max_retries: 3
+    listen_port: 13001
+    health_endpoint: "http://127.0.0.1:13001/healthz"
 ```
 
 ---
@@ -63,15 +84,16 @@ processes:
 
 ```text
 === RUN   TestMusubi_Airgap_USBSimulationScenario
-    musubi_airgap_usb_scenario_test.go:230: PHASE 1: USB media export completed. Assets successfully written to: /var/folders/zy/jng03j6n2tx0s5s_q1xwy7fc0000gn/T/TestMusubi_Airgap_USBSimulationScenario3809752322/001
-    musubi_airgap_usb_scenario_test.go:240: PHASE 2: Air-gapped network isolation active. Outbound external connectivity severed.
-    musubi_airgap_usb_scenario_test.go:266: PHASE 3: Cryptographic verification passed. Tampering detection confirmed.
-    musubi_airgap_usb_scenario_test.go:287: PHASE 4: Offline container images loaded via docker load -i. Zero registry pulls occurred.
-    musubi_airgap_usb_scenario_test.go:343: PHASE 6: Both Musubi Dashboard and Grafana successfully rendered in full air-gap environment!
-    musubi_airgap_usb_scenario_test.go:353: PHASE 7: Air-gapped deployment scenario successfully concluded.
---- PASS: TestMusubi_Airgap_USBSimulationScenario (3.89s)
+    musubi_airgap_usb_scenario_test.go:229: PHASE 1: USB media export completed. Assets successfully written to: /tmp/TestMusubi_Airgap_USBSimulationScenario/001
+    musubi_airgap_usb_scenario_test.go:239: PHASE 2: Air-gapped network isolation active. Outbound external connectivity severed.
+    musubi_airgap_usb_scenario_test.go:265: PHASE 3: Cryptographic verification passed. Tampering detection confirmed.
+    musubi_airgap_usb_scenario_test.go:295: PHASE 4-1: docker-compose migration support verified. Manifest generated without user manual effort.
+    musubi_airgap_usb_scenario_test.go:308: PHASE 4-2: Offline package manager fallback confirmed. Zero registry pulls occurred.
+    musubi_airgap_usb_scenario_test.go:363: PHASE 6: Both Musubi Dashboard and Grafana successfully rendered in full air-gap environment!
+    musubi_airgap_usb_scenario_test.go:373: PHASE 7: Air-gapped deployment scenario successfully concluded.
+--- PASS: TestMusubi_Airgap_USBSimulationScenario (3.95s)
 PASS
-ok  	github.com/sh0jitmy/ytagarasu/test/e2e	4.140s
+ok  	github.com/sh0jitmy/ytagarasu/test/e2e	4.239s
 ```
 
 ### USB メディア書き出しスクリプト検証ログ (`export-airgap-bundle.sh`):

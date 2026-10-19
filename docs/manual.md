@@ -370,6 +370,7 @@ packages:
   - `--ingest`: 現物バイナリをバンドル用 CAS（`artifacts/`）に直接吸い上げる（Mode A）
 - `manifest init`: 対話型ウィザードによる `manifest.yaml` 作成
 - `manifest eval -m <file>`: マニフェストの事前検証とリスク評価
+- `manifest convert -f <docker-compose.yml> -o <manifest.yaml>`: 既存の `docker-compose.yml` から ytagarasu の型安全な `manifest.yaml`（`containers:` 仕様）へワンショット自動変換
 - `keygen -d <dir>`: Ed25519 署名・検証鍵ペア（`private.key`, `public.key`）の生成
 - `bundle export [options]`: 署名付きオフラインデプロイバンドルの生成
   - `--manifest, -m`: マニフェストパス
@@ -424,6 +425,24 @@ configs:
     destination: "/etc/app.conf" # 配置先パス
     permissions: "0644"
     validateCommand: "cat {{.TempFile}}" # 反映前検証コマンド
+# 宣言的 Docker コンテナ看取り定義 (supervisor が自動ロード・起動・死活看取り)
+containers:
+  - name: "postgres"
+    image: "postgres:16-alpine"
+    imageArchive: "images/postgres.tar"            # オフラインtarの相対パス (未指定時は images/<name>.tar を自動補完)
+    ports:
+      - "5432:5432"                                # ポートフォワード (ホスト:コンテナ)
+    volumes:
+      - "./data/postgres:/var/lib/postgresql/data" # ボリュームマウント (ホスト:コンテナ)
+    environment:
+      POSTGRES_DB: "musubi"
+      POSTGRES_USER: "musubi"
+      POSTGRES_PASSWORD: "secretpassword"
+    network: "bridge"                              # bridge, host, カスタム網
+    restartPolicy: "always"                        # always, on-failure, unless-stopped
+    healthEndpoint: "http://127.0.0.1:5432"
+    logPath: "/var/log/ytagarasu/postgres.log"
+
 healthChecks:
   - type: "command"              # command, http
     command: "test -f /etc/app.conf"

@@ -176,20 +176,39 @@ ytg supervisor run -c examples/musubi/manifest-docker.yaml
     └── musubi.yaml                  # エアギャップ用設定ファイル
 ```
 
-### 2. エアギャップ現場での媒体検証と自律デプロイ
+### 2. エアギャップ現場での媒体検証と自律デプロイ (Zero Manual Operations)
 USB メモリを完全オフラインの対象ホストに接続し、以下のコマンドで整合性検証と看取り起動を行います。
+**ユーザーが生の `docker load` や `docker run` コマンドを手動で叩く必要は一切ありません。**
 
 ```bash
 # 1. 媒体およびバンドルアーカイブの暗号完全性を検証（改ざん・破損検知）
+#    コンテナイメージアーカイブ（images/*.tar）も含めて全ファイルが Ed25519 / SHA-256 検証されます
 ytg bundle verify /mnt/usb/musubi-bundle/bundle-musubi-hybrid-airgap-1.0.tar.gz
 
-# 2. オフラインコンテナイメージの登録（外部レジストリ通信一切不要）
-docker load -i /mnt/usb/musubi-bundle/images/postgres.tar
-docker load -i /mnt/usb/musubi-bundle/images/grafana.tar
-
-# 3. ytg supervisor による完全オフライン看取り起動
+# 2. ytg supervisor による完全自動コンテナロード & 看取り起動
+#    マニフェスト内の containers: を検出し、未ロードのオフライン tar を自動で docker load -i して起動
 ytg supervisor run -c /mnt/usb/musubi-bundle/manifest.yaml
 ```
+
+スーパーバイザーが自律実行するデプロイパイプライン：
+1. **自動コンテナイメージロード**: `images/postgres.tar` および `images/grafana.tar` を自動で `docker load -i`（外部レジストリ通信 0 件）。
+2. **ポート・マウント・ネットワーク自動構成**: ポート（`-p 5432:5432`, `-p 3000:3000`）、ボリュームマウント（`-v ./data/postgres:...`）、環境変数、ネットワーク（`--network bridge`）を自動付与してコンテナを作成・起動。
+3. **ネイティブプロセス並行起動**: `musubi-server`, `musubi-web` を起動し、全4プロセスを一括で PID 看取り・死活監視・自動再起動。
+
+---
+
+## 🔄 docker-compose からの自動移行支援 (ytg manifest convert)
+
+すでに `docker-compose.yml` で PostgreSQL や Grafana を運用している場合、ytagarasu の自動変換コマンドで 1 発でマニフェスト化できます：
+
+```bash
+# docker-compose.yml を ytagarasu の型安全な manifest.yaml に変換
+ytg manifest convert -f docker-compose.yml -o manifest.yaml
+```
+
+**変換後のメリット**:
+- 現場のエアギャップ環境に `docker-compose` コマンドや追加ランタイムをインストールする必要がなくなります。
+- `ytagarasu` 単一バイナリのみで、Docker コンテナと Go 等のネイティブバイナリの混在看取り・自動復旧・暗号署名保証を享受できます。
 
 ### 3. ダッシュボードへのアクセス
 - **Musubi 統合監視ダッシュボード**: `http://<HOST_IP>:13001/`

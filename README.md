@@ -82,6 +82,13 @@
    - サービス一覧、Desired State、稼働メトリクス、監査ログ、バンドル手動インポートを Web ブラウザから確認可能。
 10. **🤖 初期ブートストラップ Ansible Role**:
    - `roles/deploy_agent/` により、ベアメタルや仮想マシンへの `ytagarasu-agent` のバイナリ配置、設定展開、systemd ユニット登録を自動化。
+11. **🐳 ファーストクラス Docker コンテナ看取り & 自動バンドル・自動ロード (Zero Manual Operations)**:
+   - マニフェストに `containers:` を宣言的に定義し、ポートフォワード（`ports`）、ボリュームマウント（`volumes`）、環境変数（`environment`）、ネットワーク（`network`）、再起動ポリシー（`restartPolicy`）を完全サポート。
+   - バンドル構築時（`BuildBundle` / `ytg bundle export`）に未保存のイメージを自動で `docker save` してバンドルへ格納し、現場デプロイ時（`supervisor run`）に未ロードの tar を自動で `docker load -i` してコンテナ起動。ユーザーが生コマンドを打つ必要はゼロです。
+   - コンテナイメージアーカイブもバイナリと同様に Ed25519 デジタル署名と SHA-256 チェックサムチェーンに完全包含されます。
+12. **🔄 docker-compose.yml からのワンショット自動変換支援 (`ytg manifest convert`)**:
+   - 既存の `docker-compose.yml` を 1 コマンド（`ytg manifest convert -f docker-compose.yml -o manifest.yaml`）で ytagarasu の型安全なマニフェストへ 100% 自動変換。
+   - 変換後は現場に `docker-compose` コマンドをインストールする必要がなくなり、ytagarasu 単一バイナリのみでコンテナとネイティブプロセスの統合看取り・死活監視・自動再起動・暗号署名保証を享受できます。
 
 ---
 

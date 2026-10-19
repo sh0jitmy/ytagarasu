@@ -658,6 +658,7 @@ func printHelpTo(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  ytg inspect backend-api")
 	_, _ = fmt.Fprintln(w, "  ytg restart backend-api")
 	_, _ = fmt.Fprintln(w, "  ytg restart --all")
+	_, _ = fmt.Fprintln(w, "  ytg manifest convert -f docker-compose.yml -o manifest.yaml")
 	_, _ = fmt.Fprintln(w, "  ytg supervisor run -c manifest.yaml")
 	_, _ = fmt.Fprintln(w, "  source <(ytg completion bash)")
 	_, _ = fmt.Fprintln(w, "  ytg completion zsh > ~/.zfunc/_ytg")
