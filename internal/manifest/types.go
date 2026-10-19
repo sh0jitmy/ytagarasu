@@ -254,6 +254,7 @@ type Manifest struct {
 	Configs             []Config                 `json:"configs,omitempty" yaml:"configs,omitempty"`
 	Services            []Service                `json:"services,omitempty" yaml:"services,omitempty"`
 	HealthChecks        []HealthCheck            `json:"healthChecks,omitempty" yaml:"healthChecks,omitempty"`
+	Containers          []ContainerSpec          `json:"containers,omitempty" yaml:"containers,omitempty"`
 	Rollback            RollbackPolicy           `json:"rollback" yaml:"rollback"`
 }
 
@@ -299,4 +300,33 @@ type PreparationResult struct {
 	Missing           []MissingItem     `json:"missing,omitempty" yaml:"missing,omitempty"`
 	ResourceEstimates ResourceEstimates `json:"resourceEstimates" yaml:"resourceEstimates"`
 	Risks             []Risk            `json:"risks,omitempty" yaml:"risks,omitempty"`
+}
+
+// ContainerHealthCheck defines container-specific health probes.
+type ContainerHealthCheck struct {
+	Test            []string `json:"test,omitempty" yaml:"test,omitempty"`
+	IntervalSeconds int      `json:"intervalSeconds,omitempty" yaml:"intervalSeconds,omitempty"`
+	TimeoutSeconds  int      `json:"timeoutSeconds,omitempty" yaml:"timeoutSeconds,omitempty"`
+	Retries         int      `json:"retries,omitempty" yaml:"retries,omitempty"`
+}
+
+// ContainerSpec represents a first-class declarative container configuration.
+type ContainerSpec struct {
+	Name           string                `json:"name" yaml:"name"`
+	Image          string                `json:"image" yaml:"image"`
+	ImageArchive   string                `json:"imageArchive,omitempty" yaml:"imageArchive,omitempty"` // offline tar archive relative to bundle root
+	Ports          []string              `json:"ports,omitempty" yaml:"ports,omitempty"`               // e.g. "5432:5432", "3000:3000/tcp"
+	Volumes        []string              `json:"volumes,omitempty" yaml:"volumes,omitempty"`           // e.g. "./data:/var/lib/data:ro"
+	Environment    map[string]string     `json:"environment,omitempty" yaml:"environment,omitempty"`
+	Network        string                `json:"network,omitempty" yaml:"network,omitempty"`             // bridge, host, or custom network name
+	RestartPolicy  string                `json:"restartPolicy,omitempty" yaml:"restartPolicy,omitempty"` // always, on-failure, unless-stopped
+	AutoRestart    *bool                 `json:"autoRestart,omitempty" yaml:"autoRestart,omitempty"`
+	MaxRetries     int                   `json:"maxRetries,omitempty" yaml:"maxRetries,omitempty"`
+	HealthEndpoint string                `json:"healthEndpoint,omitempty" yaml:"healthEndpoint,omitempty"`
+	HealthCheck    *ContainerHealthCheck `json:"healthCheck,omitempty" yaml:"healthCheck,omitempty"`
+	Command        []string              `json:"command,omitempty" yaml:"command,omitempty"`
+	LogPath        string                `json:"logPath,omitempty" yaml:"logPath,omitempty"`
+	LogMaxSizeMB   int                   `json:"logMaxSizeMB,omitempty" yaml:"logMaxSizeMB,omitempty"`
+	LogMaxBackups  int                   `json:"logMaxBackups,omitempty" yaml:"logMaxBackups,omitempty"`
+	LogCompress    bool                  `json:"logCompress,omitempty" yaml:"logCompress,omitempty"`
 }

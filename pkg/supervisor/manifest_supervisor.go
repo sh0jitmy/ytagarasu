@@ -22,10 +22,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,9 +41,10 @@ type SupervisorState struct {
 
 // ManifestSpec represents deployment manifest structure for process supervision.
 type ManifestSpec struct {
-	Version   string          `yaml:"version"`
-	Processes []ProcessConfig `yaml:"processes,omitempty"`
-	Services  []struct {
+	Version    string                   `yaml:"version"`
+	Processes  []ProcessConfig          `yaml:"processes,omitempty"`
+	Containers []manifest.ContainerSpec `yaml:"containers,omitempty"`
+	Services   []struct {
 		Name          string `yaml:"name"`
 		Binary        string `yaml:"binary,omitempty"`
 		Action        string `yaml:"action,omitempty"`
@@ -67,6 +71,7 @@ type ManifestSupervisor struct {
 	mu           sync.RWMutex
 	supervisors  map[string]ProcessSupervisor
 	configs      map[string]ProcessConfig
+	containers   []manifest.ContainerSpec
 }
 
 // NewManifestSupervisor loads and initializes a manifest-driven supervisor.
@@ -146,6 +151,75 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 		}
 	}
 
+	// 4. Declarative Containers section mapping
+	for _, ctr := range spec.Containers {
+		if ctr.Name == "" {
+			continue
+		}
+		if _, exists := configs[ctr.Name]; !exists {
+			args := []string{"run", "--rm", "--name", ctr.Name}
+
+			if ctr.Network != "" {
+				args = append(args, "--network", ctr.Network)
+			}
+
+			for _, p := range ctr.Ports {
+				trimmed := strings.TrimSpace(p)
+				if trimmed != "" {
+					args = append(args, "-p", trimmed)
+				}
+			}
+
+			for _, v := range ctr.Volumes {
+				trimmed := strings.TrimSpace(v)
+				if trimmed != "" {
+					args = append(args, "-v", trimmed)
+				}
+			}
+
+			for k, v := range ctr.Environment {
+				args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+			}
+
+			args = append(args, ctr.Image)
+
+			if len(ctr.Command) > 0 {
+				args = append(args, ctr.Command...)
+			}
+
+			autoRestart := true
+			if ctr.AutoRestart != nil {
+				autoRestart = *ctr.AutoRestart
+			}
+			maxRetries := ctr.MaxRetries
+			if maxRetries <= 0 {
+				maxRetries = 5
+			}
+
+			primaryPort := 0
+			if len(ctr.Ports) > 0 {
+				parts := strings.Split(ctr.Ports[0], ":")
+				if len(parts) >= 1 {
+					_, _ = fmt.Sscanf(parts[0], "%d", &primaryPort)
+				}
+			}
+
+			configs[ctr.Name] = ProcessConfig{
+				Name:           ctr.Name,
+				Binary:         "docker",
+				Args:           args,
+				AutoRestart:    autoRestart,
+				MaxRetries:     maxRetries,
+				ListenPort:     primaryPort,
+				HealthEndpoint: ctr.HealthEndpoint,
+				LogPath:        ctr.LogPath,
+				LogMaxSizeMB:   ctr.LogMaxSizeMB,
+				LogMaxBackups:  ctr.LogMaxBackups,
+				LogCompress:    ctr.LogCompress,
+			}
+		}
+	}
+
 	if len(configs) == 0 {
 		return nil, errors.New("manifest does not contain any runnable processes, services, or applications")
 	}
@@ -158,6 +232,7 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 	return &ManifestSupervisor{
 		supervisors: supervisors,
 		configs:     configs,
+		containers:  spec.Containers,
 	}, nil
 }
 
@@ -165,6 +240,11 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 func (m *ManifestSupervisor) StartAll(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Ensure all offline container images are loaded before supervision
+	if err := m.ensureContainerImagesLoaded(ctx); err != nil {
+		return fmt.Errorf("failed ensuring container images: %w", err)
+	}
 
 	for name, s := range m.supervisors {
 		if err := s.Start(ctx); err != nil {
@@ -319,4 +399,37 @@ func LoadState(statePath string) (*SupervisorState, error) {
 	}
 
 	return nil, fmt.Errorf("failed to read state file after retries: %w", lastErr)
+}
+
+// ensureContainerImagesLoaded loads offline container image archives via `docker load -i`.
+func (m *ManifestSupervisor) ensureContainerImagesLoaded(ctx context.Context) error {
+	if len(m.containers) == 0 {
+		return nil
+	}
+
+	baseDir := "."
+	if m.manifestPath != "" {
+		baseDir = filepath.Dir(m.manifestPath)
+	}
+
+	for _, ctr := range m.containers {
+		archiveRel := ctr.ImageArchive
+		if archiveRel == "" {
+			archiveRel = filepath.Join("images", fmt.Sprintf("%s.tar", ctr.Name))
+		}
+		archivePath := filepath.Join(baseDir, archiveRel)
+		cleanArchive := filepath.Clean(archivePath)
+
+		if _, err := os.Stat(cleanArchive); err == nil {
+			// Archive exists, load it via docker load -i
+			//nolint:gosec // Safe execution of docker load with cleaned file path
+			cmd := exec.CommandContext(ctx, "docker", "load", "-i", cleanArchive)
+			out, loadErr := cmd.CombinedOutput()
+			if loadErr != nil {
+				return fmt.Errorf("docker load failed for container %s (%s): %w (output: %s)",
+					ctr.Name, cleanArchive, loadErr, string(out))
+			}
+		}
+	}
+	return nil
 }
