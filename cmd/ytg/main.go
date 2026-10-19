@@ -283,10 +283,11 @@ type ServiceStatusInfo struct {
 
 // StatusReport represents deterministic structured JSON output for ytg status.
 type StatusReport struct {
-	ManifestPath string              `json:"manifest_path"`
-	UpdatedAt    string              `json:"updated_at"`
-	TotalCount   int                 `json:"total_count"`
-	Services     []ServiceStatusInfo `json:"services"`
+	ManifestPath string                `json:"manifest_path"`
+	UpdatedAt    string                `json:"updated_at"`
+	TotalCount   int                   `json:"total_count"`
+	Integrity    ManifestIntegrityInfo `json:"integrity"`
+	Services     []ServiceStatusInfo   `json:"services"`
 }
 
 func handleSupervisorStatus(args []string) {
@@ -326,11 +327,14 @@ func handleSupervisorStatus(args []string) {
 		})
 	}
 
+	integrity := CheckManifestIntegrity(state.ManifestPath)
+
 	if isJSON {
 		report := StatusReport{
 			ManifestPath: state.ManifestPath,
 			UpdatedAt:    state.UpdatedAt.Format(time.RFC3339),
 			TotalCount:   len(services),
+			Integrity:    integrity,
 			Services:     services,
 		}
 		data, _ := json.MarshalIndent(report, "", "  ")
@@ -339,6 +343,16 @@ func handleSupervisorStatus(args []string) {
 	}
 
 	fmt.Printf("[ytg status] Manifest: %s (updated: %s)\n", state.ManifestPath, state.UpdatedAt.Format(time.RFC3339))
+	switch integrity.Status {
+	case "VERIFIED":
+		fmt.Printf("[ytg status] Integrity: \033[32mVERIFIED\033[0m (Ed25519: %s...) [%s]\n", integrity.KeyFingerprint, integrity.SignaturePath)
+	case "TAMPERED":
+		fmt.Printf("[ytg status] Integrity: \033[31m\033[1m⚠️ TAMPERED\033[0m (%v)\n", integrity.VerificationError)
+	case "UNSIGNED":
+		fmt.Printf("[ytg status] Integrity: UNSIGNED (run: ytg manifest sign %s)\n", state.ManifestPath)
+	default:
+		fmt.Printf("[ytg status] Integrity: %s (%s)\n", integrity.Status, integrity.VerificationError)
+	}
 	fmt.Printf("%-18s %-7s %-12s %-9s %-11s %s\n", "NAME", "PID", "STATE", "RESTARTS", "STARTED_AT", "COMMAND")
 	fmt.Println("--------------------------------------------------------------------------------")
 	for _, s := range services {
@@ -348,15 +362,16 @@ func handleSupervisorStatus(args []string) {
 
 // InspectReport represents deterministic structured JSON output for ytg inspect.
 type InspectReport struct {
-	Name         string `json:"name"`
-	PID          int    `json:"pid"`
-	State        string `json:"state"`
-	Restarts     int    `json:"restarts"`
-	StartedAt    string `json:"started_at"`
-	Uptime       string `json:"uptime"`
-	Command      string `json:"command"`
-	ManifestPath string `json:"manifest_path"`
-	LastUpdated  string `json:"last_updated"`
+	Name         string                 `json:"name"`
+	PID          int                    `json:"pid"`
+	State        string                 `json:"state"`
+	Restarts     int                    `json:"restarts"`
+	StartedAt    string                 `json:"started_at"`
+	Uptime       string                 `json:"uptime"`
+	Command      string                 `json:"command"`
+	ManifestPath string                 `json:"manifest_path"`
+	Integrity    *ManifestIntegrityInfo `json:"integrity,omitempty"`
+	LastUpdated  string                 `json:"last_updated"`
 }
 
 func handleSupervisorInspect(args []string) {
@@ -400,6 +415,7 @@ func handleSupervisorInspect(args []string) {
 		uptimeStr = time.Since(p.StartedAt).Round(time.Second).String()
 	}
 
+	integrity := CheckManifestIntegrity(state.ManifestPath)
 	report := InspectReport{
 		Name:         targetName,
 		PID:          p.PID,
@@ -409,6 +425,7 @@ func handleSupervisorInspect(args []string) {
 		Uptime:       uptimeStr,
 		Command:      p.CurrentPath,
 		ManifestPath: state.ManifestPath,
+		Integrity:    &integrity,
 		LastUpdated:  state.UpdatedAt.Format(time.RFC3339),
 	}
 
@@ -457,13 +474,41 @@ func handleDoctor(args []string) {
 		Message: fmt.Sprintf("%s/%s (Go %s)", runtime.GOOS, runtime.GOARCH, runtime.Version()),
 	})
 
-	// Check 2: Manifest file existence
+	// Check 2: Manifest file existence & cryptographic integrity
 	if _, err := os.Stat("manifest.yaml"); err == nil {
 		checks = append(checks, DoctorCheckItem{
 			Name:    "Manifest File",
 			Status:  "PASS",
 			Message: "manifest.yaml found in current working directory",
 		})
+		integrity := CheckManifestIntegrity("manifest.yaml")
+		switch integrity.Status {
+		case "VERIFIED":
+			checks = append(checks, DoctorCheckItem{
+				Name:    "Manifest Cryptographic Signature",
+				Status:  "PASS",
+				Message: fmt.Sprintf("Ed25519 signature verified (%s...)", integrity.KeyFingerprint),
+			})
+		case "TAMPERED":
+			allPassed = false
+			checks = append(checks, DoctorCheckItem{
+				Name:    "Manifest Cryptographic Signature",
+				Status:  "FAIL",
+				Message: fmt.Sprintf("Tampering detected: %s", integrity.VerificationError),
+			})
+		case "UNSIGNED":
+			checks = append(checks, DoctorCheckItem{
+				Name:    "Manifest Cryptographic Signature",
+				Status:  "WARN",
+				Message: "Manifest is unsigned (sign with: ytg manifest sign manifest.yaml)",
+			})
+		default:
+			checks = append(checks, DoctorCheckItem{
+				Name:    "Manifest Cryptographic Signature",
+				Status:  "INFO",
+				Message: fmt.Sprintf("Status: %s (%s)", integrity.Status, integrity.VerificationError),
+			})
+		}
 	} else {
 		checks = append(checks, DoctorCheckItem{
 			Name:    "Manifest File",
