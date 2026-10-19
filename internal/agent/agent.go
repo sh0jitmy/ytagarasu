@@ -37,15 +37,17 @@ import (
 
 // Config defines the deployment agent settings.
 type Config struct {
-	ServerURL    string
-	ServiceID    string
-	PollInterval time.Duration
-	StateFile    string
-	LockFile     string
-	InstallDir   string
-	Roles        []string
-	Hostname     string
-	HTTPClient   *http.Client
+	ServerURL        string
+	ServiceID        string
+	PollInterval     time.Duration
+	StateFile        string
+	LockFile         string
+	InstallDir       string
+	Roles            []string
+	Hostname         string
+	HTTPClient       *http.Client
+	TrustedPublicKey string // Hex string or path to Ed25519 public key (.pub)
+	RequireSignature bool   // Enforce cryptographic signature verification (rejection on failure)
 }
 
 // DeployReport contains the outcome of a deployment attempt sent to the server audit API.
@@ -100,6 +102,60 @@ func NewAgent(cfg Config, pkgMgr PackageManager) *Agent {
 // SetPackageManager updates the agent's package manager implementation.
 func (a *Agent) SetPackageManager(pkgMgr PackageManager) {
 	a.pkgMgr = pkgMgr
+}
+
+// VerifyManifestSignature validates the cryptographic Ed25519 signature of raw manifest bytes.
+// If TrustedPublicKey is set or RequireSignature is true, missing or invalid signature aborts deployment.
+func (a *Agent) VerifyManifestSignature(manifestBytes []byte, signatureHex string) error {
+	pubKey := strings.TrimSpace(a.cfg.TrustedPublicKey)
+	if pubKey == "" && !a.cfg.RequireSignature {
+		return nil
+	}
+
+	sig := strings.TrimSpace(signatureHex)
+	if sig == "" {
+		return errors.New("manifest cryptographic signature is missing but verification is required")
+	}
+
+	if pubKey == "" {
+		return errors.New("trusted public key is not configured for signature verification")
+	}
+
+	// Resolve public key if it is a file path
+	if pubData, err := os.ReadFile(filepath.Clean(pubKey)); err == nil {
+		pubKey = strings.TrimSpace(string(pubData))
+	}
+
+	valid, err := manifest.VerifySignature(pubKey, manifestBytes, sig)
+	if err != nil {
+		return fmt.Errorf("cryptographic signature verification error: %w", err)
+	}
+	if !valid {
+		return manifest.ErrSignatureMismatch
+	}
+
+	slog.Info("manifest cryptographic signature successfully verified", "service", a.cfg.ServiceID)
+	return nil
+}
+
+// VerifyLocalManifestFile verifies a local manifest file and its detached signature.
+func (a *Agent) VerifyLocalManifestFile(manifestPath string, sigPath string) error {
+	cleanManifest := filepath.Clean(manifestPath)
+	data, err := os.ReadFile(cleanManifest)
+	if err != nil {
+		return fmt.Errorf("failed reading manifest file: %w", err)
+	}
+
+	if sigPath == "" {
+		sigPath = cleanManifest + ".sig"
+	}
+	cleanSig := filepath.Clean(sigPath)
+	sigBytes, err := os.ReadFile(cleanSig)
+	if err != nil {
+		return fmt.Errorf("failed reading signature file: %w", err)
+	}
+
+	return a.VerifyManifestSignature(data, string(sigBytes))
 }
 
 // StepOnce performs a single deployment check and application cycle.
@@ -165,6 +221,24 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 	manifestBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed reading manifest body: %w", err)
+	}
+
+	// Cryptographic Ed25519 signature verification guard (DISA STIG / NIST SP 800-218)
+	sigHeader := resp.Header.Get("X-Manifest-Signature")
+	if sigHeader == "" {
+		sigHeader = resp.Header.Get("X-Signature")
+	}
+	if verifyErr := a.VerifyManifestSignature(manifestBytes, sigHeader); verifyErr != nil {
+		slog.Error("manifest security verification rejected deployment",
+			"error", verifyErr,
+			"service", a.cfg.ServiceID,
+			"release", releaseID,
+		)
+		report := a.createReport(releaseID, "", false, fmt.Sprintf("security verification failed: %v", verifyErr), startTime)
+		a.sendReport(ctx, report)
+		state.Status = "tampered"
+		_ = a.stateStore.Save(state)
+		return report, verifyErr
 	}
 
 	m, err := manifest.Parse(manifestBytes)
