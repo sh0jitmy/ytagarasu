@@ -44,11 +44,14 @@ cp /path/to/Musubi/bin/musubi-* examples/musubi/bin/
 改ざん検知およびサプライチェーンセキュリティを担保するため、Ed25519 鍵ペアを生成し、マニフェストに暗号署名を付与します。
 
 ```bash
-# 鍵ペア生成 (未作成の場合)
-ytg manifest keygen --privkey key.priv --pubkey key.pub
+# 鍵ペア生成 (未作成の場合: deploy.key と deploy.pub が生成されます)
+ytg manifest keygen -o deploy
 
-# マニフェスト署名
-ytg manifest sign -m examples/musubi/manifest.yaml --privkey key.priv
+# マニフェスト署名 (manifest.yaml.sig が生成されます)
+ytg manifest sign examples/musubi/manifest.yaml --key deploy.key
+
+# 署名検証
+ytg manifest verify examples/musubi/manifest.yaml --key deploy.pub
 ```
 
 ### 3. ytg supervisor による看取り起動

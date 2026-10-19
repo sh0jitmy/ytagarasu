@@ -55,7 +55,7 @@ jobs:
           mkdir -p "${WORK_DIR}/logs" "${WORK_DIR}/data"
 
           # 1. Generate Ed25519 Signing Keypair
-          ./bin/ytg manifest keygen --privkey "${WORK_DIR}/deploy.priv" --pubkey "${WORK_DIR}/deploy.pub"
+          ./bin/ytg manifest keygen -o "${WORK_DIR}/deploy"
 
           # 2. Prepare deployment manifest targeting compiled Musubi binaries
           cat << MANIFEST > "${WORK_DIR}/manifest.yaml"
@@ -93,10 +93,10 @@ jobs:
           MANIFEST
 
           # 3. Sign manifest with Ed25519 key
-          ./bin/ytg manifest sign -m "${WORK_DIR}/manifest.yaml" --privkey "${WORK_DIR}/deploy.priv"
+          ./bin/ytg manifest sign "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.key"
 
           # 4. Verify cryptographic signature
-          ./bin/ytg manifest verify -m "${WORK_DIR}/manifest.yaml" --pubkey "${WORK_DIR}/deploy.pub"
+          ./bin/ytg manifest verify "${WORK_DIR}/manifest.yaml" --key "${WORK_DIR}/deploy.pub"
 
           # 5. Start ytg supervisor daemon in background
           echo "==> Starting ytg supervisor in background..."
