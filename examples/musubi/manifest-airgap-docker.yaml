@@ -1,0 +1,102 @@
+version: "1.0"
+metadata:
+  name: "musubi-airgap-docker-hybrid"
+  description: "Air-Gapped Deployment Bundle Exported to USB for Musubi and Containerized PostgreSQL & Grafana"
+  environment: "airgap-usb"
+
+# 1. Offline Container Images loaded via `docker load -i` from USB media
+packages:
+  container-images:
+    manager: "docker"
+    order: 1
+    items:
+      - name: "images/postgres.tar"
+        version: "16-alpine"
+      - name: "images/grafana.tar"
+        version: "10.4.0"
+
+processes:
+  # 2. Containerized PostgreSQL RDBMS loaded from offline media
+  - name: postgres-container
+    binary: docker
+    args:
+      - run
+      - --rm
+      - --name
+      - musubi-postgres
+      - -p
+      - "5432:5432"
+      - -e
+      - POSTGRES_DB=musubi
+      - -e
+      - POSTGRES_USER=musubi
+      - -e
+      - POSTGRES_PASSWORD=musubi_secret
+      - postgres:16-alpine
+    auto_restart: true
+    max_retries: 5
+    listen_port: 5432
+    health_endpoint: "http://127.0.0.1:5432"
+    log_path: "./logs/postgres-docker.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+
+  # 3. Containerized Grafana Telemetry Dashboard loaded from offline media
+  - name: grafana-container
+    binary: docker
+    args:
+      - run
+      - --rm
+      - --name
+      - musubi-grafana
+      - -p
+      - "3000:3000"
+      - -e
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - grafana/grafana:10.4.0
+    auto_restart: true
+    max_retries: 5
+    listen_port: 3000
+    health_endpoint: "http://127.0.0.1:3000/api/health"
+    log_path: "./logs/grafana-docker.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+
+  # 4. Native Musubi Core Server connecting to containerized PostgreSQL
+  - name: musubi-server
+    binary: ./bin/musubi-server
+    work_dir: .
+    env:
+      PORT: "18080"
+      SNMP_TRAP_PORT: "10162"
+      DATABASE_DRIVER: "postgres"
+      DATABASE_DSN: "postgres://musubi:musubi_secret@127.0.0.1:5432/musubi?sslmode=disable"
+      BACKUP_ENABLED: "false"
+    auto_restart: true
+    max_retries: 5
+    listen_port: 18080
+    health_endpoint: "http://127.0.0.1:18080/v1/system/healthz"
+    rollback_on_error: true
+    escape_hatch_mode: true
+    log_path: "./logs/musubi-server.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+    log_compress: true
+
+  # 5. Native Musubi HTMX Web Dashboard connecting to Core Server
+  - name: musubi-web
+    binary: ./bin/musubi-web
+    work_dir: .
+    env:
+      PORT: "13001"
+      MUSUBI_API_URL: "http://127.0.0.1:18080"
+    auto_restart: true
+    max_retries: 5
+    listen_port: 13001
+    health_endpoint: "http://127.0.0.1:13001/healthz"
+    rollback_on_error: true
+    escape_hatch_mode: true
+    log_path: "./logs/musubi-web.log"
+    log_max_size_mb: 50
+    log_max_backups: 5
+    log_compress: true

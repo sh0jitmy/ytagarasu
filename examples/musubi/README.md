@@ -140,3 +140,55 @@ ytg supervisor run -c examples/musubi/manifest-docker.yaml
 
 ### APT / DNF リポジトリ動的追加
 マニフェスト内で Docker 公式リポジトリの URL を宣言することにより、エージェントが自動的に `/etc/apt/sources.list.d/docker.list` を構成し、最新のコンテナランタイムを非対話的に導入します。
+
+---
+
+## 💾 USB可搬媒体への書き出しと完全エアギャップ環境デプロイ手順
+
+外部ネットワークとの通信が一切遮断された「完全エアギャップ（オフライン）環境」にデプロイする場合、オンライン/準備環境において **USB メモリやポータブル SSD などの可搬媒体へアセット一式をエクスポート** してから現場へ持ち込みます。
+
+### 1. 準備端末での媒体書き出し (USB Export Pipeline)
+インターネット接続可能な準備端末で `export-airgap-bundle.sh` を実行し、USB マウント先（例: `/Volumes/USB_STICK/musubi-bundle`）へ書き出します。
+
+```bash
+# USBマウント先を指定してエクスポート
+./examples/musubi/export-airgap-bundle.sh /Volumes/USB_STICK/musubi-bundle
+```
+
+エクスポートされる媒体データ構成：
+```text
+/Volumes/USB_STICK/musubi-bundle/
+├── manifest.yaml                    # オフラインコンテナ・バイナリ看取りマニフェスト
+├── bundle-musubi-hybrid-airgap-1.0.tar.gz  # 配布用単一アーカイブ
+├── signatures/
+│   ├── manifest.sig                 # Ed25519 暗号署名
+│   └── public.key                   # 署名検証用公開鍵
+├── checksums                        # 全アセットの SHA-256 チェックサム
+├── artifacts/
+│   ├── musubi-server                # Musubi バックエンドバイナリ
+│   └── musubi-web                   # Musubi Web ダッシュボードバイナリ
+├── images/
+│   ├── postgres.tar                 # PostgreSQL 16 コンテナイメージアーカイブ (docker save)
+│   └── grafana.tar                  # Grafana 10.4.0 コンテナイメージアーカイブ (docker save)
+└── configs/
+    └── musubi.yaml                  # エアギャップ用設定ファイル
+```
+
+### 2. エアギャップ現場での媒体検証と自律デプロイ
+USB メモリを完全オフラインの対象ホストに接続し、以下のコマンドで整合性検証と看取り起動を行います。
+
+```bash
+# 1. 媒体およびバンドルアーカイブの暗号完全性を検証（改ざん・破損検知）
+ytg bundle verify /mnt/usb/musubi-bundle/bundle-musubi-hybrid-airgap-1.0.tar.gz
+
+# 2. オフラインコンテナイメージの登録（外部レジストリ通信一切不要）
+docker load -i /mnt/usb/musubi-bundle/images/postgres.tar
+docker load -i /mnt/usb/musubi-bundle/images/grafana.tar
+
+# 3. ytg supervisor による完全オフライン看取り起動
+ytg supervisor run -c /mnt/usb/musubi-bundle/manifest.yaml
+```
+
+### 3. ダッシュボードへのアクセス
+- **Musubi 統合監視ダッシュボード**: `http://<HOST_IP>:13001/`
+- **Grafana テレメトリダッシュボード**: `http://<HOST_IP>:3000/`
