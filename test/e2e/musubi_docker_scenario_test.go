@@ -69,6 +69,17 @@ func main() {
 		return
 	}
 
+	if cmd == "load" {
+		for i := 2; i < len(os.Args); i++ {
+			if os.Args[i] == "-i" && i+1 < len(os.Args) {
+				fmt.Printf("Loaded image from offline archive: %s\n", os.Args[i+1])
+				return
+			}
+		}
+		fmt.Println("Loaded image from offline archive")
+		return
+	}
+
 	if cmd == "run" {
 		var portMap string
 		var image string

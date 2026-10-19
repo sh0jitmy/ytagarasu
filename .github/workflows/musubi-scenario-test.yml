@@ -40,13 +40,27 @@ jobs:
           mkdir -p bin
           go build -v -o bin/ytg ./cmd/ytg
 
-      - name: Run Go E2E Musubi Scenario Tests (Standalone & FullStack with Postgres & Grafana)
+      - name: Run Go E2E Musubi Scenario Tests (Standalone, Docker Hybrid & Airgap USB)
         env:
           MUSUBI_SERVER_BIN: /tmp/Musubi/bin/musubi-server
           MUSUBI_WEB_BIN: /tmp/Musubi/bin/musubi-web
         run: |
           echo "==> Executing Go E2E Scenario Tests for Musubi..."
           go test -v -run "TestMusubi_" ./test/e2e
+
+      - name: Verify Musubi Air-Gapped USB Media Export Pipeline
+        run: |
+          echo "==> Testing USB Media Export Pipeline Script..."
+          ./examples/musubi/export-airgap-bundle.sh /tmp/usb-media-bundle
+          ls -la /tmp/usb-media-bundle/
+          test -f /tmp/usb-media-bundle/manifest.yaml
+          test -f /tmp/usb-media-bundle/artifacts/musubi-server
+          test -f /tmp/usb-media-bundle/artifacts/musubi-web
+          test -f /tmp/usb-media-bundle/images/postgres.tar
+          test -f /tmp/usb-media-bundle/images/grafana.tar
+          test -f /tmp/usb-media-bundle/checksums
+          test -f /tmp/usb-media-bundle/bundle-musubi-hybrid-airgap-1.0.tar.gz
+          echo "==> USB Media Export verified successfully!"
 
       - name: Run Real CLI-Driven Musubi Full-Stack Deployment & Verification
         run: |

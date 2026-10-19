@@ -172,12 +172,18 @@ func main() {
 	}
 
 	// Determine package manager
-	var pkgMgr agent.PackageManager
+	multiMgr := agent.NewMultiPackageManager(nil)
 	if _, err := os.Stat("/usr/bin/apt-get"); err == nil {
-		pkgMgr = agent.NewAptPackageManager(nil)
+		aptMgr := agent.NewAptPackageManager(nil)
+		multiMgr.Register("apt", aptMgr)
+		multiMgr.Register("os", aptMgr)
 	} else if _, err := os.Stat("/usr/bin/dnf"); err == nil {
-		pkgMgr = agent.NewRpmPackageManager(nil)
+		rpmMgr := agent.NewRpmPackageManager(nil)
+		multiMgr.Register("dnf", rpmMgr)
+		multiMgr.Register("rpm", rpmMgr)
+		multiMgr.Register("os", rpmMgr)
 	}
+	multiMgr.Register("docker", agent.NewDockerPackageManager(nil))
 
 	cfg := agent.Config{
 		ServerURL:    serverURL,
@@ -189,7 +195,7 @@ func main() {
 		Roles:        roles,
 	}
 
-	ag := agent.NewAgent(cfg, pkgMgr)
+	ag := agent.NewAgent(cfg, multiMgr)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
