@@ -34,6 +34,12 @@ import (
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 )
 
+// ErrEmptyBundle indicates that a bundle archive file has zero bytes.
+var ErrEmptyBundle = errors.New("bundle file is empty (0 bytes)")
+
+// ErrCorruptBundle indicates that a bundle archive is corrupt, truncated, or invalid gzip/tar.
+var ErrCorruptBundle = errors.New("corrupt or truncated bundle archive")
+
 // VerificationResult contains the inspection findings of a bundle archive.
 type VerificationResult struct {
 	Valid          bool               `json:"valid"`
@@ -54,9 +60,17 @@ func VerifyBundle(bundlePath string, expectedPubKey ed25519.PublicKey) (*Verific
 	}
 	defer func() { _ = f.Close() }()
 
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect bundle stat: %w", err)
+	}
+	if stat.Size() == 0 {
+		return nil, fmt.Errorf("%w: bundle file %s is empty (0 bytes)", ErrEmptyBundle, bundlePath)
+	}
+
 	gr, err := gzip.NewReader(f)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open gzip stream: %w", err)
+		return nil, fmt.Errorf("%w: invalid gzip or corrupt header: %v", ErrCorruptBundle, err)
 	}
 	defer func() { _ = gr.Close() }()
 
@@ -69,13 +83,13 @@ func VerifyBundle(bundlePath string, expectedPubKey ed25519.PublicKey) (*Verific
 			break
 		}
 		if nextErr != nil {
-			return nil, fmt.Errorf("error reading tar stream: %w", nextErr)
+			return nil, fmt.Errorf("%w: corrupt or truncated tar stream: %v", ErrCorruptBundle, nextErr)
 		}
 
 		if header.Typeflag == tar.TypeReg {
 			data, readErr := io.ReadAll(tr)
 			if readErr != nil {
-				return nil, fmt.Errorf("failed to read tar entry %s: %w", header.Name, readErr)
+				return nil, fmt.Errorf("%w: failed to read tar entry %s: %v", ErrCorruptBundle, header.Name, readErr)
 			}
 			files[filepath.ToSlash(header.Name)] = data
 		}

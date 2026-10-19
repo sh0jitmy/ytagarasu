@@ -460,6 +460,9 @@ func (m *ManifestSupervisor) ensureContainerImagesLoaded(ctx context.Context) er
 		cleanArchive := filepath.Clean(archivePath)
 
 		if _, err := os.Stat(cleanArchive); err == nil {
+			if valErr := ValidateTarArchive(cleanArchive); valErr != nil {
+				return fmt.Errorf("container archive validation failed for %s (%s): %w", ctr.Name, cleanArchive, valErr)
+			}
 			// Archive exists, load it via docker load -i
 			//nolint:gosec // Safe execution of docker load with cleaned file path
 			cmd := exec.CommandContext(ctx, "docker", "load", "-i", cleanArchive)
