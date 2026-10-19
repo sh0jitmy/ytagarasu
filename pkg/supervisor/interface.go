@@ -21,6 +21,7 @@ package supervisor
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"runtime"
@@ -32,15 +33,16 @@ import (
 type ProcessState string
 
 const (
-	StatePending    ProcessState = "PENDING"
-	StateStarting   ProcessState = "STARTING"
-	StateRunning    ProcessState = "RUNNING"
-	StateStopping   ProcessState = "STOPPING"
-	StateStopped    ProcessState = "STOPPED"
-	StateFailed     ProcessState = "FAILED"
-	StateCrashed    ProcessState = "CRASHED"
-	StateRecovering ProcessState = "RECOVERING"
-	StateRollbacked ProcessState = "ROLLBACK_DONE"
+	StatePending      ProcessState = "PENDING"
+	StateStarting     ProcessState = "STARTING"
+	StateRunning      ProcessState = "RUNNING"
+	StateStopping     ProcessState = "STOPPING"
+	StateStopped      ProcessState = "STOPPED"
+	StateFailed       ProcessState = "FAILED"
+	StateCrashed      ProcessState = "CRASHED"
+	StateRecovering   ProcessState = "RECOVERING"
+	StateRollbacked   ProcessState = "ROLLBACK_DONE"
+	StatePortConflict ProcessState = "PORT_CONFLICT"
 )
 
 // ProcessConfig defines the configuration for a single supervised process.
@@ -61,6 +63,9 @@ type ProcessConfig struct {
 	LogMaxBackups   int               `json:"log_max_backups,omitempty" yaml:"log_max_backups,omitempty"`
 	LogCompress     bool              `json:"log_compress,omitempty" yaml:"log_compress,omitempty"`
 	OOMResilient    bool              `json:"oom_resilient,omitempty" yaml:"oom_resilient,omitempty"`
+	PreflightPort   bool              `json:"preflight_port,omitempty" yaml:"preflight_port,omitempty"`
+	InitialBackoff  time.Duration     `json:"initial_backoff,omitempty" yaml:"initial_backoff,omitempty"`
+	BackoffFactor   float64           `json:"backoff_factor,omitempty" yaml:"backoff_factor,omitempty"`
 }
 
 // ProcessSupervisor defines the unified cross-platform interface for process oversight.
@@ -121,6 +126,13 @@ func (s *BaseSupervisor) Start(ctx context.Context) error {
 
 	if s.state == StateRunning {
 		return fmt.Errorf("process '%s' is already running (PID: %d)", s.spec.Name, s.cmd.Process.Pid)
+	}
+
+	if s.spec.PreflightPort && s.spec.ListenPort > 0 {
+		if err := CheckPortAvailable(s.spec.ListenPort); err != nil {
+			s.state = StatePortConflict
+			return err
+		}
 	}
 
 	s.state = StateStarting
@@ -222,10 +234,23 @@ func (s *BaseSupervisor) watchProcess(cmd *exec.Cmd, waitDone chan struct{}) {
 	if s.spec.AutoRestart && s.crashCount <= s.spec.MaxRetries {
 		s.state = StateRecovering
 		s.restarts++
-		go func() {
-			time.Sleep(100 * time.Millisecond)
+		go func(currentCrashCount int) {
+			initial := s.spec.InitialBackoff
+			if initial <= 0 {
+				initial = 100 * time.Millisecond
+			}
+			factor := s.spec.BackoffFactor
+			if factor <= 1.0 {
+				factor = 2.0
+			}
+			multiplier := math.Pow(factor, float64(currentCrashCount-1))
+			backoff := time.Duration(float64(initial) * multiplier)
+			if backoff > 5*time.Second {
+				backoff = 5 * time.Second
+			}
+			time.Sleep(backoff)
 			_ = s.Start(context.Background())
-		}()
+		}(s.crashCount)
 	}
 }
 

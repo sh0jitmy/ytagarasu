@@ -74,15 +74,37 @@ type ManifestSupervisor struct {
 	containers   []manifest.ContainerSpec
 }
 
+// ManifestSupervisorConfig defines runtime guardrails and preflight checks for ManifestSupervisor.
+type ManifestSupervisorConfig struct {
+	RequireDockerPreflight bool
+	PreflightPortCheck     bool
+}
+
 // NewManifestSupervisor loads and initializes a manifest-driven supervisor.
 func NewManifestSupervisor(manifestPath string) (*ManifestSupervisor, error) {
-	cleanPath := filepath.Clean(manifestPath)
-	data, err := os.ReadFile(cleanPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read manifest file %s: %w", manifestPath, err)
+	return NewManifestSupervisorWithConfig(nil, manifestPath, ManifestSupervisorConfig{})
+}
+
+// NewManifestSupervisorWithConfig creates a supervisor from parsed manifest and optional config.
+func NewManifestSupervisorWithConfig(m *manifest.Manifest, manifestPath string, cfg ManifestSupervisorConfig) (*ManifestSupervisor, error) {
+	var data []byte
+	var err error
+	if manifestPath != "" {
+		cleanPath := filepath.Clean(manifestPath)
+		data, err = os.ReadFile(cleanPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read manifest file %s: %w", manifestPath, err)
+		}
+	} else if m != nil {
+		data, err = yaml.Marshal(m)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal manifest: %w", err)
+		}
+	} else {
+		return nil, errors.New("either manifest struct or manifestPath must be provided")
 	}
 
-	ms, err := NewManifestSupervisorFromYAML(data)
+	ms, err := NewManifestSupervisorFromYAMLWithConfig(data, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -92,9 +114,20 @@ func NewManifestSupervisor(manifestPath string) (*ManifestSupervisor, error) {
 
 // NewManifestSupervisorFromYAML constructs ManifestSupervisor from raw YAML bytes.
 func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
+	return NewManifestSupervisorFromYAMLWithConfig(data, ManifestSupervisorConfig{})
+}
+
+// NewManifestSupervisorFromYAMLWithConfig constructs ManifestSupervisor from raw YAML bytes with preflight config.
+func NewManifestSupervisorFromYAMLWithConfig(data []byte, cfg ManifestSupervisorConfig) (*ManifestSupervisor, error) {
 	var spec ManifestSpec
 	if err := yaml.Unmarshal(data, &spec); err != nil {
 		return nil, fmt.Errorf("failed to parse manifest YAML: %w", err)
+	}
+
+	if cfg.RequireDockerPreflight && len(spec.Containers) > 0 {
+		if err := CheckDockerDaemonReachable(context.Background()); err != nil {
+			return nil, fmt.Errorf("preflight failed: %w", err)
+		}
 	}
 
 	configs := make(map[string]ProcessConfig)
@@ -211,6 +244,7 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 				AutoRestart:    autoRestart,
 				MaxRetries:     maxRetries,
 				ListenPort:     primaryPort,
+				PreflightPort:  cfg.PreflightPortCheck,
 				HealthEndpoint: ctr.HealthEndpoint,
 				LogPath:        ctr.LogPath,
 				LogMaxSizeMB:   ctr.LogMaxSizeMB,
@@ -405,6 +439,11 @@ func LoadState(statePath string) (*SupervisorState, error) {
 func (m *ManifestSupervisor) ensureContainerImagesLoaded(ctx context.Context) error {
 	if len(m.containers) == 0 {
 		return nil
+	}
+
+	// Verify Docker daemon reachable before attempting load
+	if err := CheckDockerDaemonReachable(ctx); err != nil {
+		return fmt.Errorf("cannot load container images: %w", err)
 	}
 
 	baseDir := "."
