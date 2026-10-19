@@ -1,5 +1,7 @@
 # Musubi × ytagarasu エアギャップ・オンプレミスデプロイメント実践ガイド (Full-Stack: PostgreSQL & Grafana 対応)
 
+> 📘 **公式仕様書・ユースケース集**: 本構成の USB 可搬媒体エクスポートおよび完全エアギャップ環境デプロイに関する包括的な技術仕様・テストシナリオ・トラブルシューティングは、[docs/airgap-usb-docker-hybrid-test-scenarios-and-usecases.md](../../docs/airgap-usb-docker-hybrid-test-scenarios-and-usecases.md) をご参照ください。
+
 本ディレクトリは、外部OSSである **Musubi**（Air-Gapped 自律ネットワークオーケストレーター & テレメトリゲートウェイ）およびその本番環境構成である **PostgreSQL 16** と **Grafana** を、**ytagarasu (ytg)** の宣言的マニフェストによってパッケージインストール・プロセス看取り・監視する実践ユースケースのサンプル構成です。
 
 ---

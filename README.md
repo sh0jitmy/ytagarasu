@@ -222,6 +222,11 @@ make matrix-test
   - 設定構文事前検証と自動ロールバックの設計
   - 監査チェーンの仕組みと復旧手順
   - CLI コマンドおよび設定ファイル（YAML）完全リファレンス
+- 💾 **[エアギャップUSB可搬媒体書き出し・検証・デプロイ仕様書 & ユースケース集 (docs/airgap-usb-docker-hybrid-test-scenarios-and-usecases.md)](docs/airgap-usb-docker-hybrid-test-scenarios-and-usecases.md)**:
+  - オンライン準備端末におけるUSB可搬媒体（バイナリ・コンテナtar・マニフェスト・暗号署名）エクスポートパイプライン
+  - 完全ネットワーク遮断（エアギャップ）環境での暗号完全性・改ざん耐性検証
+  - Dockerハイブリッド構成（PostgreSQL 16 & Grafana）と外部オンプレミスOSS（Musubi）の看取り起動
+  - E2Eシナリオテスト仕様および7フェーズ検証基準
 
 ---
 
