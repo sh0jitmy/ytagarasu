@@ -269,6 +269,36 @@ func (a *Agent) StepOnce(ctx context.Context) (*DeployReport, error) {
 		orderedTargets := SortPackageTargets(m.Packages)
 		for _, opt := range orderedTargets {
 			pkgTarget := opt.Target
+
+			// Configure external/mirror package repository if specified
+			if pkgTarget.RepoURL != "" {
+				slog.Info("configuring dynamic package repository",
+					"target", opt.Key,
+					"manager", pkgTarget.Manager,
+					"repo_url", pkgTarget.RepoURL,
+				)
+				var repoErr error
+				if multiMgr, ok := a.pkgMgr.(*MultiPackageManager); ok {
+					repoErr = multiMgr.ConfigureNamedRepository(ctx, pkgTarget, opt.Key)
+				} else if adv, ok := a.pkgMgr.(AdvancedRepositoryConfigurable); ok {
+					repoErr = adv.ConfigureNamedRepository(ctx, pkgTarget, opt.Key)
+				} else if conf, ok := a.pkgMgr.(RepositoryConfigurable); ok {
+					trusted := true
+					if pkgTarget.Trusted != nil {
+						trusted = *pkgTarget.Trusted
+					}
+					repoErr = conf.ConfigureRepository(ctx, pkgTarget.RepoURL, trusted)
+				}
+				if repoErr != nil {
+					report := a.createReport(releaseID, m.Release, false, fmt.Sprintf("repository configuration failed for '%s': %v", opt.Key, repoErr), startTime)
+					a.sendReport(ctx, report)
+					state.Status = "failed"
+					_ = a.stateStore.Save(state)
+					return report, repoErr
+				}
+				_ = a.pkgMgr.UpdateRepositories(ctx)
+			}
+
 			if len(pkgTarget.Items) > 0 {
 				slog.Info("applying packages non-interactively",
 					"target", opt.Key,

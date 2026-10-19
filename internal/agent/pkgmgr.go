@@ -135,6 +135,25 @@ type RepositoryConfigurable interface {
 	ConfigureRepository(ctx context.Context, repoURL string, trusted bool) error
 }
 
+// AdvancedRepositoryConfigurable extends repository management with named repositories, suites, and components.
+type AdvancedRepositoryConfigurable interface {
+	ConfigureNamedRepository(ctx context.Context, target manifest.PackageTarget, repoKey string) error
+}
+
+func sanitizeRepoName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	res := b.String()
+	if res == "" {
+		return "ytagarasu"
+	}
+	return res
+}
+
 // AptPackageManager manages Debian/Ubuntu APT packages non-interactively.
 type AptPackageManager struct {
 	runner  CommandRunner
@@ -159,18 +178,43 @@ func (a *AptPackageManager) WithSudo(enabled bool) *AptPackageManager {
 	return a
 }
 
-// ConfigureRepository configures an offline or local APT repository in /etc/apt/sources.list.d/ytagarasu.list.
-func (a *AptPackageManager) ConfigureRepository(ctx context.Context, repoURL string, trusted bool) error {
-	repoURL = strings.TrimSpace(repoURL)
+// ConfigureNamedRepository configures an APT repository with customized file name, suite, and components.
+func (a *AptPackageManager) ConfigureNamedRepository(ctx context.Context, target manifest.PackageTarget, repoKey string) error {
+	repoURL := strings.TrimSpace(target.RepoURL)
 	if repoURL == "" {
 		return nil
+	}
+	repoName := strings.TrimSpace(target.RepoName)
+	if repoName == "" {
+		repoName = strings.TrimSpace(repoKey)
+	}
+	if repoName == "" {
+		repoName = "ytagarasu"
+	}
+	repoName = sanitizeRepoName(repoName)
+
+	trusted := true
+	if target.Trusted != nil {
+		trusted = *target.Trusted
 	}
 	trustOpt := ""
 	if trusted {
 		trustOpt = "[trusted=yes] "
 	}
-	entry := fmt.Sprintf("deb %s%s stable main\n", trustOpt, repoURL)
-	targetFile := "/etc/apt/sources.list.d/ytagarasu.list"
+
+	suite := strings.TrimSpace(target.Suite)
+	if suite == "" {
+		suite = "stable"
+	}
+
+	components := target.Components
+	if len(components) == 0 {
+		components = []string{"main"}
+	}
+	compStr := strings.Join(components, " ")
+
+	entry := fmt.Sprintf("deb %s%s %s %s\n", trustOpt, repoURL, suite, compStr)
+	targetFile := fmt.Sprintf("/etc/apt/sources.list.d/%s.list", repoName)
 
 	cmdName, args := ElevateCommand(a.useSudo, "sh", "-c", fmt.Sprintf("printf \x27%%s\x27 \x22%s\x22 | tee %s", entry, targetFile))
 	out, err := a.runner.Run(ctx, nil, cmdName, args...)
@@ -178,6 +222,14 @@ func (a *AptPackageManager) ConfigureRepository(ctx context.Context, repoURL str
 		return fmt.Errorf("failed to configure apt repository at %s: %w (output: %s)", targetFile, err, string(out))
 	}
 	return nil
+}
+
+// ConfigureRepository configures an offline or local APT repository in /etc/apt/sources.list.d/ytagarasu.list.
+func (a *AptPackageManager) ConfigureRepository(ctx context.Context, repoURL string, trusted bool) error {
+	return a.ConfigureNamedRepository(ctx, manifest.PackageTarget{
+		RepoURL: repoURL,
+		Trusted: &trusted,
+	}, "ytagarasu")
 }
 
 // UpdateRepositories runs `apt-get update` with timeout protection.
@@ -544,19 +596,46 @@ func (m *MultiPackageManager) Register(name string, mgr PackageManager) {
 	m.managers[strings.ToLower(strings.TrimSpace(name))] = mgr
 }
 
-// ConfigureRepository dispatches repository configuration to managers implementing RepositoryConfigurable.
-func (m *MultiPackageManager) ConfigureRepository(ctx context.Context, managerName string, repoURL string, trusted bool) error {
-	mgr, ok := m.managers[strings.ToLower(strings.TrimSpace(managerName))]
-	if !ok {
-		if conf, isConf := m.fallback.(RepositoryConfigurable); isConf {
-			return conf.ConfigureRepository(ctx, repoURL, trusted)
-		}
-		return nil
+// ConfigureNamedRepository dispatches repository configuration using target manager or key.
+func (m *MultiPackageManager) ConfigureNamedRepository(ctx context.Context, target manifest.PackageTarget, repoKey string) error {
+	managerName := strings.ToLower(strings.TrimSpace(target.Manager))
+	if managerName == "" {
+		managerName = strings.ToLower(strings.TrimSpace(repoKey))
 	}
-	if conf, ok := mgr.(RepositoryConfigurable); ok {
-		return conf.ConfigureRepository(ctx, repoURL, trusted)
+
+	if mgr, ok := m.managers[managerName]; ok {
+		if adv, isAdv := mgr.(AdvancedRepositoryConfigurable); isAdv {
+			return adv.ConfigureNamedRepository(ctx, target, repoKey)
+		}
+		if conf, isConf := mgr.(RepositoryConfigurable); isConf {
+			trusted := true
+			if target.Trusted != nil {
+				trusted = *target.Trusted
+			}
+			return conf.ConfigureRepository(ctx, target.RepoURL, trusted)
+		}
+	}
+
+	if adv, isAdv := m.fallback.(AdvancedRepositoryConfigurable); isAdv {
+		return adv.ConfigureNamedRepository(ctx, target, repoKey)
+	}
+	if conf, isConf := m.fallback.(RepositoryConfigurable); isConf {
+		trusted := true
+		if target.Trusted != nil {
+			trusted = *target.Trusted
+		}
+		return conf.ConfigureRepository(ctx, target.RepoURL, trusted)
 	}
 	return nil
+}
+
+// ConfigureRepository dispatches repository configuration to managers implementing RepositoryConfigurable.
+func (m *MultiPackageManager) ConfigureRepository(ctx context.Context, managerName string, repoURL string, trusted bool) error {
+	return m.ConfigureNamedRepository(ctx, manifest.PackageTarget{
+		Manager: managerName,
+		RepoURL: repoURL,
+		Trusted: &trusted,
+	}, managerName)
 }
 
 // UpdateRepositories updates all registered repositories.

@@ -122,3 +122,21 @@ grafana        41236   RUNNING   0         1m23s      http://127.0.0.1:3000/api/
 
 ## 🛡️ セルフヒーリングと自動復旧テスト
 万が一 `postgres`, `musubi-server`, `musubi-web`, `grafana` のいずれかのプロセスが強制終了（`kill -9` や Kernel OOM）された場合でも、`ytg supervisor` が瞬時に検知し、自動再起動およびヘルスチェックによる正常性復帰を実行します。
+
+---
+
+## 🐳 Docker ハイブリッド構成 (manifest-docker.yaml)
+
+ホストOS上の Docker を利用して PostgreSQL および Grafana をコンテナとして起動・看取りしつつ、Musubi Core Server と Web UI をネイティブプロセスとして連携させる構成です。
+
+```bash
+# 署名と検証
+ytg manifest sign examples/musubi/manifest-docker.yaml --key deploy.key -o examples/musubi/manifest-docker.yaml.sig
+ytg manifest verify examples/musubi/manifest-docker.yaml --key deploy.pub
+
+# supervisor 看取り起動
+ytg supervisor run -c examples/musubi/manifest-docker.yaml
+```
+
+### APT / DNF リポジトリ動的追加
+マニフェスト内で Docker 公式リポジトリの URL を宣言することにより、エージェントが自動的に `/etc/apt/sources.list.d/docker.list` を構成し、最新のコンテナランタイムを非対話的に導入します。

@@ -93,6 +93,25 @@ func TestAptPackageManager(t *testing.T) {
 		assert.Contains(t, runner.calls[0].args[3], "/etc/apt/sources.list.d/ytagarasu.list")
 	})
 
+	t.Run("ConfigureNamedRepository for Docker", func(t *testing.T) {
+		t.Parallel()
+		runner := &fakeRunner{}
+		mgr := agent.NewAptPackageManager(runner).WithSudo(true)
+
+		target := manifest.PackageTarget{
+			RepoURL:    "https://download.docker.com/linux/ubuntu",
+			RepoName:   "docker",
+			Suite:      "noble",
+			Components: []string{"stable"},
+		}
+		err := mgr.ConfigureNamedRepository(context.Background(), target, "docker")
+		require.NoError(t, err)
+		require.Len(t, runner.calls, 1)
+		assert.Equal(t, "sudo", runner.calls[0].name)
+		assert.Contains(t, runner.calls[0].args[3], "[trusted=yes] https://download.docker.com/linux/ubuntu noble stable")
+		assert.Contains(t, runner.calls[0].args[3], "/etc/apt/sources.list.d/docker.list")
+	})
+
 	t.Run("InstallPackages with versions and local deb", func(t *testing.T) {
 		t.Parallel()
 		runner := &fakeRunner{}
