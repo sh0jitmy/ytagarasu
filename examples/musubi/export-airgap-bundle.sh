@@ -106,7 +106,9 @@ echo "  ✔ Generated SHA-256 checksums list"
 # 6. Package into Portable Bundle Archive (.tar.gz)
 echo "[5/5] Packaging into deployment bundle archive..."
 ARCHIVE_PATH="${OUTPUT_DIR}/bundle-musubi-hybrid-airgap-1.0.tar.gz"
-tar -czf "${ARCHIVE_PATH}" -C "${OUTPUT_DIR}" --exclude="*.tar.gz" .
+TMP_ARCHIVE=$(mktemp "${TMPDIR:-/tmp}/bundle-export-XXXXXX.tar.gz")
+tar -czf "${TMP_ARCHIVE}" -C "${OUTPUT_DIR}" --exclude="*.tar.gz" .
+mv "${TMP_ARCHIVE}" "${ARCHIVE_PATH}"
 echo "  ✔ Created portable bundle archive: ${ARCHIVE_PATH}"
 
 echo ""
