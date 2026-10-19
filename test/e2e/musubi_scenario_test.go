@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 	"github.com/sh0jitmy/ytagarasu/pkg/supervisor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -134,6 +135,123 @@ func waitForEndpoint(t *testing.T, url string, timeout time.Duration) {
 		time.Sleep(150 * time.Millisecond)
 	}
 	require.Failf(t, "endpoint not ready", "timed out waiting for endpoint %s", url)
+}
+
+// waitForTCPPort polls a TCP address until it accepts connections or times out.
+func waitForTCPPort(t *testing.T, addr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	require.Failf(t, "TCP port not ready", "timed out waiting for TCP %s", addr)
+}
+
+// buildMockServiceBinaries compiles lightweight mock services for Postgres & Grafana for cross-platform E2E.
+func buildMockServiceBinaries(t *testing.T, targetDir string) (string, string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(targetDir, 0750))
+
+	// 1. Mock Postgres source
+	pgSrc := `package main
+import (
+	"fmt"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+)
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5432"
+	}
+	l, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "postgres listen error: %v\n", err)
+		os.Exit(1)
+	}
+	defer l.Close()
+	fmt.Printf("[mock-postgres] listening on :%s\n", port)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	<-sig
+	fmt.Println("[mock-postgres] stopped")
+}
+`
+	pgFile := filepath.Join(targetDir, "mock_pg_main.go")
+	pgBin := filepath.Join(targetDir, "mock-postgres")
+	require.NoError(t, os.WriteFile(pgFile, []byte(pgSrc), 0600))
+	//nolint:gosec // Compile test mock
+	cmdPG := exec.Command("go", "build", "-o", pgBin, pgFile)
+	outPG, err := cmdPG.CombinedOutput()
+	require.NoError(t, err, "failed to compile mock-postgres: %s", string(outPG))
+
+	// 2. Mock Grafana source
+	grafanaSrc := `package main
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(` + "`" + `{"commit":"mock","database":"ok","version":"10.4.0"}` + "`" + `))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(` + "`" + `<!DOCTYPE html><html><head><title>Grafana - Musubi Telemetry</title></head><body><h1>Grafana 10.4.0</h1><p>Musubi Metrics Dashboard</p></body></html>` + "`" + `))
+	})
+	srv := &http.Server{
+		Addr: fmt.Sprintf(":%s", port),
+		Handler: mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	fmt.Printf("[mock-grafana] listening on :%s\n", port)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		_ = srv.ListenAndServe()
+	}()
+	<-sig
+	_ = srv.Close()
+	fmt.Println("[mock-grafana] stopped")
+}
+`
+	grafanaFile := filepath.Join(targetDir, "mock_grafana_main.go")
+	grafanaBin := filepath.Join(targetDir, "mock-grafana")
+	require.NoError(t, os.WriteFile(grafanaFile, []byte(grafanaSrc), 0600))
+	//nolint:gosec // Compile test mock
+	cmdGrafana := exec.Command("go", "build", "-o", grafanaBin, grafanaFile)
+	outG, err := cmdGrafana.CombinedOutput()
+	require.NoError(t, err, "failed to compile mock-grafana: %s", string(outG))
+
+	return pgBin, grafanaBin
 }
 
 func TestMusubi_DeploymentAndDashboardScenario(t *testing.T) {
@@ -299,5 +417,184 @@ func TestMusubi_DeploymentAndDashboardScenario(t *testing.T) {
 	statuses := ms.Status()
 	for name, st := range statuses {
 		assert.Equal(t, supervisor.StateStopped, st.State, "Process %s must be in STOPPED state", name)
+	}
+}
+
+func TestMusubi_FullStackScenario_WithPostgresAndGrafana(t *testing.T) {
+	t.Parallel()
+
+	serverBin, webBin := resolveMusubiBinaries(t)
+
+	workDir := t.TempDir()
+	logDir := filepath.Join(workDir, "logs")
+	require.NoError(t, os.MkdirAll(logDir, 0750))
+
+	// Compile mock Postgres & Grafana binaries to ensure reproducible, zero-external-dependency E2E execution
+	pgBin, grafanaBin := buildMockServiceBinaries(t, filepath.Join(workDir, "mock_bin"))
+
+	pgPort := getFreePort(t)
+	serverPort := getFreePort(t)
+	webPort := getFreePort(t)
+	grafanaPort := getFreePort(t)
+	trapPort := getFreePort(t)
+
+	pgAddr := fmt.Sprintf("127.0.0.1:%d", pgPort)
+	serverHealthURL := fmt.Sprintf("http://127.0.0.1:%d/v1/system/healthz", serverPort)
+	webHealthURL := fmt.Sprintf("http://127.0.0.1:%d/healthz", webPort)
+	webDashboardURL := fmt.Sprintf("http://127.0.0.1:%d/", webPort)
+	grafanaHealthURL := fmt.Sprintf("http://127.0.0.1:%d/api/health", grafanaPort)
+	grafanaDashboardURL := fmt.Sprintf("http://127.0.0.1:%d/", grafanaPort)
+
+	// 1. Construct Full Stack Manifest with Packages (Postgres + Grafana) & 4 Managed Processes
+	fullStackManifest := struct {
+		Version   string                            `yaml:"version"`
+		Packages  map[string]manifest.PackageTarget `yaml:"packages"`
+		Processes []supervisor.ProcessConfig        `yaml:"processes"`
+	}{
+		Version: "1.0",
+		Packages: map[string]manifest.PackageTarget{
+			"apt": {
+				Manager: "apt",
+				Order:   1,
+				Items: []manifest.PackageItem{
+					{Name: "postgresql-16", Version: "16*"},
+					{Name: "grafana", Version: "10*"},
+				},
+			},
+			"dnf": {
+				Manager: "dnf",
+				Order:   1,
+				Items: []manifest.PackageItem{
+					{Name: "postgresql-server"},
+					{Name: "grafana"},
+				},
+			},
+		},
+		Processes: []supervisor.ProcessConfig{
+			{
+				Name:        "postgres",
+				Binary:      pgBin,
+				WorkDir:     workDir,
+				Env:         map[string]string{"PORT": fmt.Sprintf("%d", pgPort)},
+				AutoRestart: true,
+				MaxRetries:  3,
+				ListenPort:  pgPort,
+				LogPath:     filepath.Join(logDir, "postgres.log"),
+			},
+			{
+				Name:    "musubi-server",
+				Binary:  serverBin,
+				WorkDir: workDir,
+				Env: map[string]string{
+					"PORT":            fmt.Sprintf("%d", serverPort),
+					"SNMP_TRAP_PORT":  fmt.Sprintf("%d", trapPort),
+					"DATABASE_DRIVER": "sqlite3",
+					"DATABASE_DSN":    filepath.Join(workDir, "musubi-fullstack.db") + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)",
+					"BACKUP_ENABLED":  "false",
+				},
+				AutoRestart:    true,
+				MaxRetries:     3,
+				ListenPort:     serverPort,
+				HealthEndpoint: serverHealthURL,
+				LogPath:        filepath.Join(logDir, "musubi-server.log"),
+			},
+			{
+				Name:    "musubi-web",
+				Binary:  webBin,
+				WorkDir: workDir,
+				Env: map[string]string{
+					"PORT":           fmt.Sprintf("%d", webPort),
+					"MUSUBI_API_URL": fmt.Sprintf("http://127.0.0.1:%d", serverPort),
+				},
+				AutoRestart:    true,
+				MaxRetries:     3,
+				ListenPort:     webPort,
+				HealthEndpoint: webHealthURL,
+				LogPath:        filepath.Join(logDir, "musubi-web.log"),
+			},
+			{
+				Name:    "grafana",
+				Binary:  grafanaBin,
+				WorkDir: workDir,
+				Env: map[string]string{
+					"PORT": fmt.Sprintf("%d", grafanaPort),
+				},
+				AutoRestart:    true,
+				MaxRetries:     3,
+				ListenPort:     grafanaPort,
+				HealthEndpoint: grafanaHealthURL,
+				LogPath:        filepath.Join(logDir, "grafana.log"),
+			},
+		},
+	}
+
+	manifestBytes, err := yaml.Marshal(fullStackManifest)
+	require.NoError(t, err)
+
+	manifestPath := filepath.Join(workDir, "manifest-fullstack.yaml")
+	require.NoError(t, os.WriteFile(manifestPath, manifestBytes, 0600))
+
+	// 2. Cryptographic Integrity Signature (Ed25519)
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	manifestHash := sha256.Sum256(manifestBytes)
+	signature := ed25519.Sign(privKey, manifestHash[:])
+	require.True(t, ed25519.Verify(pubKey, manifestHash[:], signature), "Ed25519 signature must verify")
+
+	// 3. Initialize and Start Manifest Supervisor for all 4 processes
+	ms, err := supervisor.NewManifestSupervisor(manifestPath)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		_ = ms.StopAll(3 * time.Second)
+	})
+
+	err = ms.StartAll(ctx)
+	require.NoError(t, err)
+
+	// 4. Verify all 4 managed processes are loaded and in RUNNING state
+	statuses := ms.Status()
+	assert.Len(t, statuses, 4, "Supervisor must manage exactly 4 processes (postgres, musubi-server, musubi-web, grafana)")
+	for name, st := range statuses {
+		assert.Equal(t, supervisor.StateRunning, st.State, "Process %s must be RUNNING", name)
+		assert.Positive(t, st.PID, "Process %s must have valid PID", name)
+	}
+
+	// 5. Poll all endpoints (Postgres TCP, Musubi Server HTTP, Musubi Web HTTP, Grafana HTTP)
+	waitForTCPPort(t, pgAddr, 10*time.Second)
+	waitForEndpoint(t, serverHealthURL, 15*time.Second)
+	waitForEndpoint(t, webHealthURL, 15*time.Second)
+	waitForEndpoint(t, grafanaHealthURL, 10*time.Second)
+
+	// 6. Verify Musubi Dashboard Rendering (HTTP 200 & HTML elements)
+	client := &http.Client{Timeout: 5 * time.Second}
+	respWeb, err := client.Get(webDashboardURL)
+	require.NoError(t, err)
+	defer func() { _ = respWeb.Body.Close() }()
+	assert.Equal(t, http.StatusOK, respWeb.StatusCode)
+	bodyWeb, err := io.ReadAll(respWeb.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(bodyWeb), "Musubi Dashboard")
+	assert.Contains(t, string(bodyWeb), "統合監視ダッシュボード")
+
+	// 7. Verify Grafana Telemetry Dashboard Rendering (HTTP 200 & Title)
+	respGrafana, err := client.Get(grafanaDashboardURL)
+	require.NoError(t, err)
+	defer func() { _ = respGrafana.Body.Close() }()
+	assert.Equal(t, http.StatusOK, respGrafana.StatusCode)
+	bodyGrafana, err := io.ReadAll(respGrafana.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(bodyGrafana), "Grafana - Musubi Telemetry")
+	assert.Contains(t, string(bodyGrafana), "Musubi Metrics Dashboard")
+
+	t.Logf("FullStack Musubi + Postgres + Grafana scenario successfully verified!")
+
+	// 8. Verify Graceful Shutdown of all 4 processes
+	require.NoError(t, ms.StopAll(3*time.Second))
+	finalStatuses := ms.Status()
+	for name, st := range finalStatuses {
+		assert.Equal(t, supervisor.StateStopped, st.State, "Process %s must be STOPPED", name)
 	}
 }

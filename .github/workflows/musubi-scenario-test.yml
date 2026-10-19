@@ -40,15 +40,15 @@ jobs:
           mkdir -p bin
           go build -v -o bin/ytg ./cmd/ytg
 
-      - name: Run Go E2E Musubi Scenario Test
+      - name: Run Go E2E Musubi Scenario Tests (Standalone & FullStack with Postgres & Grafana)
         env:
           MUSUBI_SERVER_BIN: /tmp/Musubi/bin/musubi-server
           MUSUBI_WEB_BIN: /tmp/Musubi/bin/musubi-web
         run: |
-          echo "==> Executing Go E2E Scenario Test for Musubi Deployment..."
-          go test -v -run TestMusubi_DeploymentAndDashboardScenario ./test/e2e
+          echo "==> Executing Go E2E Scenario Tests for Musubi..."
+          go test -v -run "TestMusubi_" ./test/e2e
 
-      - name: Run Real CLI-Driven Musubi Deployment & Dashboard Verification
+      - name: Run Real CLI-Driven Musubi Full-Stack Deployment & Verification
         run: |
           echo "==> Testing Real ytg CLI Deployment Workflow..."
           WORK_DIR=/tmp/musubi-cli-e2e
@@ -60,6 +60,18 @@ jobs:
           # 2. Prepare deployment manifest targeting compiled Musubi binaries
           cat << MANIFEST > "${WORK_DIR}/manifest.yaml"
           version: "1.0"
+          metadata:
+            name: "musubi-enterprise-stack"
+            description: "Musubi Orchestration with PostgreSQL and Grafana"
+          packages:
+            apt:
+              manager: "apt"
+              order: 1
+              items:
+                - name: "postgresql-16"
+                  version: "16*"
+                - name: "grafana"
+                  version: "10*"
           processes:
             - name: "musubi-server"
               binary: "/tmp/Musubi/bin/musubi-server"

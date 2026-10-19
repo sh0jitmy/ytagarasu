@@ -1,25 +1,53 @@
-# Musubi × ytagarasu エアギャップ・オンプレミスデプロイメント実践ガイド
+# Musubi × ytagarasu エアギャップ・オンプレミスデプロイメント実践ガイド (Full-Stack: PostgreSQL & Grafana 対応)
 
-本ディレクトリは、外部OSSである **Musubi**（Air-Gapped 自律ネットワークオーケストレーター & テレメトリゲートウェイ）を、**ytagarasu (ytg)** の宣言的マニフェストによってデプロイ・プロセス看取り・監視する実践ユースケースのサンプル構成です。
+本ディレクトリは、外部OSSである **Musubi**（Air-Gapped 自律ネットワークオーケストレーター & テレメトリゲートウェイ）およびその本番環境構成である **PostgreSQL 16** と **Grafana** を、**ytagarasu (ytg)** の宣言的マニフェストによってパッケージインストール・プロセス看取り・監視する実践ユースケースのサンプル構成です。
 
 ---
 
 ## 🎯 構成アーキテクチャ
 
-Docker や Kubernetes、外部データベース（PostgreSQL等）に一切依存せず、Pure Go と SQLite WAL モードによって完全自律動作します。
+Docker や Kubernetes、クラウドサービスに一切依存せず、Pure Go および OS ネイティブパッケージによって完全オンプレミス自律動作します。
 
 ```text
 [ytg supervisor (プロセス看取り・死活監視・自動再起動・暗号完全性保証)]
        │
-       ├─► musubi-server (Core API / SQLite / SNMP Trap Listener :18080)
+       ├─► postgres (PostgreSQL 16 RDBMS / SQLステート永続化 :5432)
        │        ▲
-       │        │ Upstream API 通信
+       │        │ DB接続 (pgx Cgo-Free)
        │        ▼
-       └─► musubi-web (Docker-Free HTMX 統合監視ダッシュボード :13001)
-                ▲
-                │ HTTP GET / (ブラウザ閲覧)
-                ▼
-        [管理者・運用オペレータ端末]
+       ├─► musubi-server (Core API / SNMP Trap Listener / Prometheusメトリクス :18080)
+       │        ▲                              ▲
+       │        │ Upstream API 通信             │ /metrics スクレイピング
+       │        ▼                              ▼
+       ├─► musubi-web (HTMX 統合監視UI :13001)  └─► grafana (時系列可視化ダッシュボード :3000)
+       │        ▲                                      ▲
+       │        │ ブラウザ閲覧                         │ ブラウザ閲覧
+       ▼        ▼                                      ▼
+        [ネットワーク管理者・運用オペレータ端末]
+```
+
+---
+
+## 📦 パッケージインストール定義 (ytagarasu manifest)
+
+マニフェスト内の `packages:` 定義により、対象環境のパッケージマネージャー（APT / DNF / YUM）経由で PostgreSQL 16 および Grafana をオフラインキャッシュまたは閉域リポジトリから一元導入します。
+
+```yaml
+packages:
+  apt:
+    manager: "apt"
+    order: 1
+    items:
+      - name: "postgresql-16"
+        version: "16*"
+      - name: "grafana"
+        version: "10*"
+  dnf:
+    manager: "dnf"
+    order: 1
+    items:
+      - name: "postgresql-server"
+      - name: "grafana"
 ```
 
 ---
@@ -48,7 +76,7 @@ cp /path/to/Musubi/bin/musubi-* examples/musubi/bin/
 ytg manifest keygen -o deploy
 
 # マニフェスト署名 (manifest.yaml.sig が生成されます)
-ytg manifest sign examples/musubi/manifest.yaml --key deploy.key
+ytg manifest sign examples/musubi/manifest.yaml --key deploy.key -o examples/musubi/manifest.yaml.sig
 
 # 署名検証
 ytg manifest verify examples/musubi/manifest.yaml --key deploy.pub
@@ -77,23 +105,20 @@ ytg status
 
 Manifest File:     examples/musubi/manifest.yaml
 Manifest Integrity: VERIFIED (Signed with Ed25519)
-Active Processes:  2
+Active Processes:  4
 
 NAME           PID     STATUS    RESTARTS  UPTIME     ENDPOINT
+postgres       41233   RUNNING   0         1m23s      http://127.0.0.1:5432
 musubi-server  41234   RUNNING   0         1m23s      http://127.0.0.1:18080/v1/system/healthz
 musubi-web     41235   RUNNING   0         1m23s      http://127.0.0.1:13001/healthz
+grafana        41236   RUNNING   0         1m23s      http://127.0.0.1:3000/api/health
 ```
 
-### 5. Musubi ダッシュボードの確認
-ブラウザまたは curl で Musubi のリアルタイムダッシュボードにアクセスします。
-
-```bash
-open http://localhost:13001/
-# または
-curl -s http://localhost:13001/ | grep -i "Musubi Dashboard"
-```
+### 5. 各ダッシュボードへのアクセス
+- **Musubi 統合運用ダッシュボード**: `http://localhost:13001/`
+- **Grafana メトリクスダッシュボード**: `http://localhost:3000/` (初期管理者: admin / admin)
 
 ---
 
 ## 🛡️ セルフヒーリングと自動復旧テスト
-万が一 `musubi-server` や `musubi-web` のプロセスが強制終了（`kill -9` や Kernel OOM）された場合でも、`ytg supervisor` が瞬時に検知し、自動再起動およびヘルスチェックによる正常性復帰を実行します。
+万が一 `postgres`, `musubi-server`, `musubi-web`, `grafana` のいずれかのプロセスが強制終了（`kill -9` や Kernel OOM）された場合でも、`ytg supervisor` が瞬時に検知し、自動再起動およびヘルスチェックによる正常性復帰を実行します。
