@@ -17,14 +17,13 @@
 package manifest
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sh0jitmy/ytagarasu/internal/fsutil"
 
 	"gopkg.in/yaml.v3"
 )
@@ -186,23 +185,15 @@ func checkFile(relPath, fullPath string) (RequiredFile, error) {
 		return RequiredFile{Path: relPath, Exists: true}, nil
 	}
 
-	f, err := os.Open(filepath.Clean(fullPath))
+	hash, err := fsutil.FileSHA256(fullPath)
 	if err != nil {
-		return RequiredFile{Path: relPath, Exists: true}, nil
-	}
-	defer func() {
-		_ = f.Close()
-	}()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
 		return RequiredFile{Path: relPath, Exists: true}, nil
 	}
 
 	return RequiredFile{
 		Path:   relPath,
 		Exists: true,
-		SHA256: hex.EncodeToString(h.Sum(nil)),
+		SHA256: hash,
 	}, nil
 }
 

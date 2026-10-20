@@ -18,15 +18,14 @@ package discover
 
 import (
 	"bufio"
-	"crypto/sha256"
 	"debug/elf"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sh0jitmy/ytagarasu/internal/fsutil"
 
 	"gopkg.in/yaml.v3"
 )
@@ -192,7 +191,7 @@ func inspectBinary(sysroot string, svc *PlanService) {
 	}
 
 	// Calculate SHA-256
-	if hash, err := calculateSHA256(realPath); err == nil {
+	if hash, err := fsutil.FileSHA256(realPath); err == nil {
 		meta.SHA256 = hash
 	}
 
@@ -223,20 +222,6 @@ func inspectBinary(sysroot string, svc *PlanService) {
 	}
 
 	svc.BinaryInfo = meta
-}
-
-func calculateSHA256(path string) (string, error) {
-	f, err := os.Open(filepath.Clean(path)) //nolint:gosec // inspected binary path
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // SavePlan writes a DiscoveryPlan to the designated YAML output path with human-friendly comments.
