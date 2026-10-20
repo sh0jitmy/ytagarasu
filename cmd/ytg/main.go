@@ -72,6 +72,9 @@ func main() {
 	case "supervisor":
 		handleSupervisor(os.Args[2:])
 
+	case "diff":
+		handleDiffCommand(os.Args[2:])
+
 	case "completion":
 		handleCompletion(os.Args[2:])
 
@@ -641,6 +644,7 @@ func printHelpTo(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  status [--json]         Display process PID, health, restarts, and command states")
 	_, _ = fmt.Fprintln(w, "  inspect <name> [--json] Display detailed process metrics, state, and paths")
 	_, _ = fmt.Fprintln(w, "  restart <name|--all>    Gracefully restart a specific process or all processes")
+	_, _ = fmt.Fprintln(w, "  diff [-f manifest]      Detect drift between desired manifest and runtime state")
 	_, _ = fmt.Fprintln(w, "  doctor [--json]         Diagnose host environment, cgroup, manifest, and runtime health")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Subsystems:")

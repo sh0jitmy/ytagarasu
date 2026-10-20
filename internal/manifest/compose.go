@@ -29,12 +29,13 @@ import (
 // ComposeServiceSpec represents a single service definition in docker-compose.yml.
 type ComposeServiceSpec struct {
 	Image       string    `yaml:"image"`
-	Ports       []string  `yaml:"ports,omitempty"`
-	Volumes     []string  `yaml:"volumes,omitempty"`
+	Ports       yaml.Node `yaml:"ports,omitempty"`
+	Volumes     yaml.Node `yaml:"volumes,omitempty"`
 	Environment yaml.Node `yaml:"environment,omitempty"`
 	Restart     string    `yaml:"restart,omitempty"`
 	Networks    yaml.Node `yaml:"networks,omitempty"`
 	Command     yaml.Node `yaml:"command,omitempty"`
+	DependsOn   yaml.Node `yaml:"depends_on,omitempty"`
 }
 
 // ComposeFileSpec represents the top-level docker-compose file schema.
@@ -65,6 +66,9 @@ func ConvertComposeToManifest(composeYAML []byte, releaseName string) (*Manifest
 			return nil, fmt.Errorf("service '%s' missing required 'image' attribute", name)
 		}
 
+		portsList := parseComposeStringList(svc.Ports)
+		volumesList := parseComposeStringList(svc.Volumes)
+		dependsList := parseComposeDependsOn(svc.DependsOn)
 		envMap := parseComposeEnvironment(svc.Environment)
 		cmdList := parseComposeCommand(svc.Command)
 		netName := parseComposeNetwork(svc.Networks)
@@ -80,14 +84,15 @@ func ConvertComposeToManifest(composeYAML []byte, releaseName string) (*Manifest
 			Name:          name,
 			Image:         svc.Image,
 			ImageArchive:  archivePath,
-			Ports:         svc.Ports,
-			Volumes:       svc.Volumes,
+			Ports:         portsList,
+			Volumes:       volumesList,
 			Environment:   envMap,
 			Network:       netName,
 			RestartPolicy: svc.Restart,
 			AutoRestart:   &autoRestart,
 			MaxRetries:    5,
 			Command:       cmdList,
+			DependsOn:     dependsList,
 			LogPath:       fmt.Sprintf("./logs/%s-container.log", name),
 			LogMaxSizeMB:  50,
 			LogMaxBackups: 5,
@@ -126,13 +131,56 @@ func ConvertComposeFile(composePath string, releaseName string) (*Manifest, erro
 	return ConvertComposeToManifest(data, releaseName)
 }
 
+func parseComposeStringList(node yaml.Node) []string {
+	var res []string
+	switch node.Kind {
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			val := strings.TrimSpace(item.Value)
+			if val != "" {
+				res = append(res, val)
+			}
+		}
+	case yaml.ScalarNode:
+		val := strings.TrimSpace(node.Value)
+		if val != "" {
+			res = append(res, val)
+		}
+	}
+	return res
+}
+
+func parseComposeDependsOn(node yaml.Node) []string {
+	var res []string
+	switch node.Kind {
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			val := strings.TrimSpace(item.Value)
+			if val != "" {
+				res = append(res, val)
+			}
+		}
+	case yaml.MappingNode:
+		for i := 0; i < len(node.Content); i += 2 {
+			k := strings.TrimSpace(node.Content[i].Value)
+			if k != "" {
+				res = append(res, k)
+			}
+		}
+	}
+	return res
+}
+
 func parseComposeEnvironment(node yaml.Node) map[string]string {
 	res := make(map[string]string)
 	switch node.Kind {
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			k := node.Content[i].Value
-			v := node.Content[i+1].Value
+			v := ""
+			if i+1 < len(node.Content) {
+				v = node.Content[i+1].Value
+			}
 			res[k] = v
 		}
 	case yaml.SequenceNode:

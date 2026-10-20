@@ -324,6 +324,7 @@ type ContainerSpec struct {
 	MaxRetries     int                   `json:"maxRetries,omitempty" yaml:"maxRetries,omitempty"`
 	HealthEndpoint string                `json:"healthEndpoint,omitempty" yaml:"healthEndpoint,omitempty"`
 	HealthCheck    *ContainerHealthCheck `json:"healthCheck,omitempty" yaml:"healthCheck,omitempty"`
+	DependsOn      []string              `json:"depends_on,omitempty" yaml:"depends_on,omitempty"`
 	Command        []string              `json:"command,omitempty" yaml:"command,omitempty"`
 	LogPath        string                `json:"logPath,omitempty" yaml:"logPath,omitempty"`
 	LogMaxSizeMB   int                   `json:"logMaxSizeMB,omitempty" yaml:"logMaxSizeMB,omitempty"`
