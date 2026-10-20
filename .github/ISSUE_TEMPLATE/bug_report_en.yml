@@ -1,0 +1,94 @@
+name: 🐛 Bug Report [EN]
+description: Report an unexpected error, flaw, or failure in English.
+title: "[BUG]: Short summary"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please provide as much context as possible to help us reproduce and fix it.
+        (日本語のテンプレートをご利用の場合は「🐛 バグ報告 (Bug Report) [JA]」を選択してください。)
+
+  - type: input
+    id: go-version
+    attributes:
+      label: 🔧 Go Version
+      description: "Output of `go version`"
+      placeholder: "go1.26.0 darwin/arm64"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 💻 Operating System / Environment
+      description: "OS name and version"
+      placeholder: "macOS 15.5 / Ubuntu 24.04 / RHEL 9"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 📦 Affected Component
+      description: "Select the component where the issue occurs"
+      options:
+        - "CLI & Supervisor (cmd/ytg, pkg/supervisor)"
+        - "Bundle & Digital Signatures (internal/bundle, internal/manifest)"
+        - "Package Engine & Dependency Resolver (internal/pkgengine, internal/agent)"
+        - "Distribution Server & HTMX UI (cmd/ytagarasu-server, internal/server)"
+        - "Manifest Diff & Discovery (internal/delta, internal/discover)"
+        - "CI / CD & GitHub Actions"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 Bug Description
+      description: "A clear and concise description of the bug."
+      placeholder: |
+        Running `make test` fails with a timeout error in TestE2E_AppAPI.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 🔄 Steps to Reproduce
+      description: "Detailed steps to reproduce the behavior."
+      placeholder: |
+        1. Clone the repository
+        2. Run `make generate`
+        3. Run `make test`
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: ✅ Expected Behavior
+      description: "A clear description of what you expected to happen."
+      placeholder: |
+        All test suites pass successfully with zero failures.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 📋 Logs / Error Output
+      description: "Paste relevant command line output, terminal logs, or stack traces."
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 📎 Additional Context
+      description: "Screenshots, configuration snippets, or any other relevant information."
+    validations:
+      required: false

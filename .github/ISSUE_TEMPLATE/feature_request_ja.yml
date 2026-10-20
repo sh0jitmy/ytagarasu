@@ -1,5 +1,5 @@
-name: ✨ 機能要望 (Feature Request)
-description: 新機能や改善の提案を行います。
+name: ✨ 機能要望 (Feature Request) [JA]
+description: 新機能や改善の提案を日本語で行います。
 title: "[FEATURE]: 短い要約"
 labels: ["enhancement"]
 body:
@@ -7,6 +7,7 @@ body:
     attributes:
       value: |
         新機能や改善のアイデアをお寄せください。
+        (For English issue template, please select "✨ Feature Request [EN]").
 
   - type: textarea
     id: summary
@@ -14,7 +15,7 @@ body:
       label: 📝 提案の概要
       description: 追加したい機能や改善内容を簡潔に説明してください。
       placeholder: |
-        OpenAPI スキーマに基づいたバリデーションミドルウェアの自動生成機能を追加したい。
+        Desired State差分検知における安全確認ダイアログの改善。
     validations:
       required: true
 
@@ -24,8 +25,7 @@ body:
       label: 💡 動機・背景
       description: なぜこの機能が必要ですか？ どのような課題を解決しますか？
       placeholder: |
-        現在、リクエストバリデーションを各ハンドラーで手動実装しており、
-        OpenAPI スキーマとの乖離が発生しやすい。自動生成によりスキーマとの一貫性を保証したい。
+        オンプレミス環境における深夜障害対応時、誤った承認によるダウンタイムを防止するため。
     validations:
       required: true
 
@@ -35,14 +35,12 @@ body:
       label: 📦 影響範囲
       description: この提案が影響するカテゴリを選択してください。
       options:
-        - label: "API / HTTP (internal/web)"
-        - label: "データベース (ent / Atlas マイグレーション)"
-        - label: "CLI (urfave/cli)"
-        - label: "セキュリティ (認証 / TLS / ACME)"
-        - label: "オブザーバビリティ (slog / OTel / Prometheus)"
-        - label: "Terraform / IaC (さくらのクラウド)"
-        - label: "CI / CD (GitHub Actions / GoReleaser / tagpr)"
-        - label: "AI スキル (.claude/skills)"
+        - label: "CLI & Supervisor (cmd/ytg, pkg/supervisor)"
+        - label: "バンドル & 暗号署名 (internal/bundle, internal/manifest)"
+        - label: "パッケージエンジン (internal/pkgengine, internal/agent)"
+        - label: "成果物サーバー & HTMX UI (cmd/ytagarasu-server, internal/server)"
+        - label: "マニフェスト差分 & 作成支援 (internal/delta, internal/discover)"
+        - label: "CI / CD & GitHub Actions"
         - label: "ドキュメント / テンプレート"
 
   - type: textarea
@@ -51,8 +49,7 @@ body:
       label: 🔀 代替案の検討
       description: 他に検討した方法があれば記載してください。
       placeholder: |
-        代替案1: oapi-codegen のバリデーション生成オプションを利用する。
-        代替案2: go-playground/validator を手動で適用する。
+        代替案1: CLIフラグのみで制御する。
     validations:
       required: false
 
