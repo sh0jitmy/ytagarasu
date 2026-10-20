@@ -1,5 +1,5 @@
-name: 🐛 バグ報告 (Bug Report)
-description: アプリケーションの不具合やエラーを報告します。
+name: 🐛 バグ報告 (Bug Report) [JA]
+description: アプリケーションの不具合やエラーを日本語で報告します。
 title: "[BUG]: 短い要約"
 labels: ["bug"]
 body:
@@ -7,6 +7,7 @@ body:
     attributes:
       value: |
         バグの報告ありがとうございます。再現に必要な情報をできるだけ詳しく記入してください。
+        (For English issue template, please select "🐛 Bug Report [EN]").
 
   - type: input
     id: go-version
@@ -32,13 +33,12 @@ body:
       label: 📦 影響コンポーネント
       description: バグが発生しているコンポーネントを選択してください。
       options:
-        - "API / HTTP (internal/web)"
-        - "データベース (ent / internal/database)"
-        - "OpenAPI 生成コード (ogen)"
-        - "Terraform / IaC (terraform)"
-        - "CI / GitHub Actions"
-        - "ビルド / リリース (GoReleaser)"
-        - "ライセンスチェック (scripts)"
+        - "CLI & Supervisor (cmd/ytg, pkg/supervisor)"
+        - "バンドル & 暗号署名 (internal/bundle, internal/manifest)"
+        - "パッケージエンジン (internal/pkgengine, internal/agent)"
+        - "成果物サーバー & HTMX UI (cmd/ytagarasu-server, internal/server)"
+        - "マニフェスト差分 & 作成支援 (internal/delta, internal/discover)"
+        - "CI / CD & GitHub Actions"
         - "その他"
     validations:
       required: true
@@ -62,7 +62,7 @@ body:
         1. `git clone` してリポジトリをローカルに取得
         2. `make generate` でコード生成
         3. `make test` を実行
-        4. TestE2E_AppAPI が timeout エラーで失敗
+        4. エラーが発生
     validations:
       required: true
 

@@ -1,0 +1,62 @@
+name: ✨ Feature Request [EN]
+description: Suggest an idea, enhancement, or new feature in English.
+title: "[FEATURE]: Short summary"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an idea or improvement.
+        (日本語のテンプレートをご利用の場合は「✨ 機能要望 (Feature Request) [JA]」を選択してください。)
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 📝 Summary of Proposal
+      description: "A clear and concise description of what you want to happen."
+      placeholder: |
+        Improve safety confirmation prompt in Desired State drift detection.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 💡 Motivation & Background
+      description: "Why is this feature needed? What problem does it solve?"
+      placeholder: |
+        Prevent accidental approvals during late-night on-premise emergency interventions.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: category
+    attributes:
+      label: 📦 Scope of Impact
+      description: "Select the categories affected by this proposal."
+      options:
+        - label: "CLI & Supervisor (cmd/ytg, pkg/supervisor)"
+        - label: "Bundle & Digital Signatures (internal/bundle, internal/manifest)"
+        - label: "Package Engine & Dependency Resolver (internal/pkgengine, internal/agent)"
+        - label: "Distribution Server & HTMX UI (cmd/ytagarasu-server, internal/server)"
+        - label: "Manifest Diff & Discovery (internal/delta, internal/discover)"
+        - label: "CI / CD & GitHub Actions"
+        - label: "Documentation & Templates"
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔀 Alternatives Considered
+      description: "Any alternative solutions or workarounds you have considered."
+      placeholder: |
+        Alternative 1: Control solely via command-line flags.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 📎 Additional Information
+      description: "Reference documents, related issues, screenshots, or other context."
+    validations:
+      required: false

@@ -1,5 +1,5 @@
-name: 💡 AI スキル改善提案 (Skill Improvement)
-description: AIエージェント用カスタムスキル (.claude/skills) の誤動作や改善提案を行います。
+name: 🧠 AIスキル改善 (Skill Improvement) [JA]
+description: AIエージェント用カスタムスキル (.agents/skills) の誤動作や改善提案を日本語で行います。
 title: "[SKILL]: スキル名 - 短い要約"
 labels: ["skill-improvement"]
 body:
@@ -7,34 +7,14 @@ body:
     attributes:
       value: |
         AI エージェント用カスタムスキルの改善やバグ修正について教えてください。
+        (For English issue template, please select "🧠 AI Skill Improvement [EN]").
 
-  - type: dropdown
+  - type: input
     id: skill-name
     attributes:
       label: 🎯 対象のスキル名
-      description: 修正が必要なカスタムスキルを選択してください。
-      options:
-        - agent-skill-evaluator
-        - ai-skill-engineering
-        - database-design
-        - evidence-governance
-        - git-strategy
-        - github-copilot-review
-        - golang-design
-        - golang-e2e-testing
-        - golang-implementation
-        - golang-observability
-        - marketing-strategy
-        - network-design
-        - openapi-design
-        - openapi-design-review
-        - product-management
-        - quality-inspector
-        - sakuracloud-solution-architect
-        - sakuracloud-terraform
-        - software-architecture
-        - sre-deployment
-        - transaction-profiling-analyzer
+      description: 修正・改善が必要なカスタムスキル名を入力してください。
+      placeholder: "effective-go, kiss-principle, adversarial-blind-qa"
     validations:
       required: true
 

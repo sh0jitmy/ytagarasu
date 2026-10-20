@@ -1,5 +1,9 @@
 # ytagarasu (八咫烏) ユーザーマニュアル
 
+<p align="center">
+  <a href="manual.md"><b>🇯🇵 日本語マニュアル</b></a> | <a href="en/manual.md"><b>🇺🇸 English Manual</b></a>
+</p>
+
 本書は、エアギャップ・完全オフライン環境向けデプロイ基盤 **ytagarasu（八咫烏）** の導入・運用・トラブルシューティングに関する公式ユーザーマニュアルです。
 
 ---
