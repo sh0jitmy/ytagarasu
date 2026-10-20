@@ -290,8 +290,16 @@ services:
 	convertedManifest, err := manifest.ConvertComposeToManifest(sampleCompose, "musubi-hybrid")
 	require.NoError(t, err)
 	assert.Len(t, convertedManifest.Containers, 2)
-	assert.Equal(t, "postgres:16-alpine", convertedManifest.Containers[0].Image)
-	assert.Contains(t, convertedManifest.Containers[0].Ports[0], "5432")
+	var pgCtr *manifest.ContainerSpec
+	for i := range convertedManifest.Containers {
+		if convertedManifest.Containers[i].Name == "db" {
+			pgCtr = &convertedManifest.Containers[i]
+			break
+		}
+	}
+	require.NotNil(t, pgCtr)
+	assert.Equal(t, "postgres:16-alpine", pgCtr.Image)
+	assert.Contains(t, pgCtr.Ports[0], "5432")
 	t.Logf("PHASE 4-1: docker-compose migration support verified. Manifest generated without user manual effort.")
 
 	// 4-2. Verify offline package manager fallback compatibility

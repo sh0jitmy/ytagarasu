@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,9 +60,16 @@ func ConvertComposeToManifest(composeYAML []byte, releaseName string) (*Manifest
 		releaseName = "compose-migration"
 	}
 
+	serviceNames := make([]string, 0, len(composeSpec.Services))
+	for name := range composeSpec.Services {
+		serviceNames = append(serviceNames, name)
+	}
+	sort.Strings(serviceNames)
+
 	containers := make([]ContainerSpec, 0, len(composeSpec.Services))
 
-	for name, svc := range composeSpec.Services {
+	for _, name := range serviceNames {
+		svc := composeSpec.Services[name]
 		if svc.Image == "" {
 			return nil, fmt.Errorf("service '%s' missing required 'image' attribute", name)
 		}
