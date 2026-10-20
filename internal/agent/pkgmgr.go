@@ -18,17 +18,15 @@ package agent
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/sh0jitmy/ytagarasu/internal/fsutil"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 )
 
@@ -104,19 +102,13 @@ func validateLocalPackage(p manifest.PackageItem) error {
 	}
 
 	if p.SHA256 != "" {
-		f, err := os.Open(cleanPath)
+		match, err := fsutil.VerifyFileSHA256(cleanPath, p.SHA256)
 		if err != nil {
-			return fmt.Errorf("failed to open package file for checksum: %w", err)
-		}
-		defer func() { _ = f.Close() }()
-
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
 			return fmt.Errorf("failed to compute package checksum: %w", err)
 		}
-		actual := hex.EncodeToString(h.Sum(nil))
-		expected := strings.ToLower(strings.TrimSpace(p.SHA256))
-		if actual != expected {
+		if !match {
+			actual, _ := fsutil.FileSHA256(cleanPath)
+			expected := strings.ToLower(strings.TrimSpace(p.SHA256))
 			return fmt.Errorf("%w for '%s': expected %s, got %s", ErrChecksumMismatch, cleanPath, expected, actual)
 		}
 	}

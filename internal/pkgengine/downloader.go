@@ -25,8 +25,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/sh0jitmy/ytagarasu/internal/fsutil"
 )
 
 // Downloader handles concurrent, checksum-verified downloads of package artifacts.
@@ -112,14 +115,14 @@ func (d *Downloader) downloadAndVerify(ctx context.Context, pkg PackageMetadata)
 
 	// If file already exists with identical SHA-256, skip downloading (idempotent / CAS)
 	if fi, err := os.Stat(destPath); err == nil && !fi.IsDir() && pkg.SHA256 != "" {
-		if verified, _ := verifyFileChecksum(destPath, pkg.SHA256); verified {
+		if verified, _ := fsutil.VerifyFileSHA256(destPath, pkg.SHA256); verified {
 			return nil
 		}
 	}
 
 	reqURL := pkg.Filename
 	if d.BaseURL != "" && !filepath.IsAbs(pkg.Filename) {
-		reqURL = fmt.Sprintf("%s/%s", stringsTrimRight(d.BaseURL, "/"), stringsTrimLeft(pkg.Filename, "/"))
+		reqURL = fmt.Sprintf("%s/%s", strings.TrimRight(d.BaseURL, "/"), strings.TrimLeft(pkg.Filename, "/"))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
@@ -170,33 +173,4 @@ func (d *Downloader) downloadAndVerify(ctx context.Context, pkg PackageMetadata)
 	}
 
 	return nil
-}
-
-func verifyFileChecksum(path, expectedHash string) (bool, error) {
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = f.Close() }()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return false, err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)) == expectedHash, nil
-}
-
-func stringsTrimLeft(s, cutset string) string {
-	for len(s) > 0 && len(cutset) > 0 && s[:1] == cutset {
-		s = s[1:]
-	}
-	return s
-}
-
-func stringsTrimRight(s, cutset string) string {
-	for len(s) > 0 && len(cutset) > 0 && s[len(s)-1:] == cutset {
-		s = s[:len(s)-1]
-	}
-	return s
 }

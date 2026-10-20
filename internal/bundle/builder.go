@@ -20,7 +20,6 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -30,6 +29,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sh0jitmy/ytagarasu/internal/fsutil"
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
 )
 
@@ -182,7 +182,7 @@ func BuildBundle(opts BuildOptions) (*manifest.PreparationResult, error) {
 
 		// Calculate checksum if it's a regular file
 		if !info.IsDir() {
-			hashStr, hashErr := hashFileSHA256(path)
+			hashStr, hashErr := fsutil.FileSHA256(path)
 			if hashErr == nil {
 				checksumLines = append(checksumLines, fmt.Sprintf("%s  %s", hashStr, relPath))
 			}
@@ -201,7 +201,7 @@ func BuildBundle(opts BuildOptions) (*manifest.PreparationResult, error) {
 	if sigTarErr := addFileToTar(tw, sigPath, sigRel, sigInfo); sigTarErr != nil {
 		return nil, sigTarErr
 	}
-	sigHash, _ := hashFileSHA256(sigPath)
+	sigHash, _ := fsutil.FileSHA256(sigPath)
 	checksumLines = append(checksumLines, fmt.Sprintf("%s  %s", sigHash, sigRel))
 
 	pubRel := filepath.Join("signatures", "public.key")
@@ -210,7 +210,7 @@ func BuildBundle(opts BuildOptions) (*manifest.PreparationResult, error) {
 	if pubTarErr := addFileToTar(tw, pubPath, pubRel, pubInfo); pubTarErr != nil {
 		return nil, pubTarErr
 	}
-	pubHash, _ := hashFileSHA256(pubPath)
+	pubHash, _ := fsutil.FileSHA256(pubPath)
 	checksumLines = append(checksumLines, fmt.Sprintf("%s  %s", pubHash, pubRel))
 
 	// Add checksums file to archive
@@ -254,20 +254,6 @@ func addFileToTar(tw *tar.Writer, srcPath, relPath string, info os.FileInfo) err
 
 	_, copyErr := io.Copy(tw, f)
 	return copyErr
-}
-
-func hashFileSHA256(path string) (string, error) {
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // autoExportContainers inspects declarative containers in the manifest,
