@@ -1,0 +1,63 @@
+name: 🧠 AI Skill Improvement [EN]
+description: Report malfunction or suggest improvements for AI agent custom skills in English.
+title: "[SKILL]: Skill Name - Short summary"
+labels: ["skill-improvement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please tell us about improvements or bug fixes for AI agent custom skills (.agents/skills).
+        (日本語のテンプレートをご利用の場合は「🧠 AIスキル改善 (Skill Improvement) [JA]」を選択してください。)
+
+  - type: input
+    id: skill-name
+    attributes:
+      label: 🎯 Target Skill Name
+      description: "Enter the name of the custom skill that requires modification."
+      placeholder: "effective-go, kiss-principle, adversarial-blind-qa"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: 🚨 Issue Type
+      description: "What kind of issue occurred?"
+      options:
+        - "Under-triggering (Skill did not load when needed)"
+        - "Over-triggering (Skill loaded unexpectedly in unrelated tasks)"
+        - "Incorrect/Bad Advice (Skill recommended erroneous design or pattern)"
+        - "Missing Rule (Important practice or guideline missing)"
+        - "Outdated (Skill contents diverged from current codebase)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 Specific Issue Description
+      description: "Describe the prompt and what problem occurred."
+      placeholder: |
+        User prompt: "Write concurrency code for..."
+        Occurred behavior: The agent suggested channel code without closing, causing a goroutine leak.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 💡 Expected Behavior / Desired Guideline
+      description: "How should the skill guide the agent instead?"
+      placeholder: |
+        Expected: Explicitly specify channel ownership and mandate leak detection testing via goleak.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-fix
+    attributes:
+      label: 🔧 Proposed Fix
+      description: "Proposed additions or changes to the SKILL.md file."
+      render: markdown
+    validations:
+      required: false

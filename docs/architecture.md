@@ -18,6 +18,10 @@ Author: [YOUR_NAME]
 
 # System Architecture & Technical Specifications
 
+<p align="center">
+  <a href="architecture.md"><b>🇯🇵 日本語アーキテクチャ</b></a> | <a href="en/architecture.md"><b>🇺🇸 English Architecture</b></a>
+</p>
+
 本書は、`go_template` のシステム全体アーキテクチャ、コンポーネント構成、データフロー、およびテスト階層について詳述します。
 
 ---

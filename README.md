@@ -1,8 +1,19 @@
-# 🦅 ytagarasu (八咫烏)
+# 🐦‍⬛ ytagarasu (八咫烏)
 
-[![CI](https://github.com/sh0jitmy/ytagarasu/actions/workflows/ci.yml/badge.svg)](https://github.com/sh0jitmy/ytagarasu/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/sh0jitmy/ytagarasu)](https://goreportcard.com/report/github.com/sh0jitmy/ytagarasu)
+<p align="center">
+  <img src="docs/images/ytagarasu_logo.svg" alt="ytagarasu logo - Three-Legged Raven for Air-Gap Deployments" width="560">
+</p>
+
+<p align="center">
+  <a href="README.md"><b>🇯🇵 日本語</b></a> | <a href="README.en.md"><b>🇺🇸 English</b></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/sh0jitmy/ytagarasu/actions/workflows/ci.yml"><img src="https://github.com/sh0jitmy/ytagarasu/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/sh0jitmy/ytagarasu/actions/workflows/lint.yml"><img src="https://github.com/sh0jitmy/ytagarasu/actions/workflows/lint.yml/badge.svg" alt="Lint"></a>
+  <a href="https://pkg.go.dev/github.com/sh0jitmy/ytagarasu"><img src="https://pkg.go.dev/badge/github.com/sh0jitmy/ytagarasu.svg" alt="Go Reference"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
+</p>
 
 **ytagarasu（八咫烏）** は、インターネット接続が完全に遮断された**エアギャップ（完全オフライン）環境**のための、高信頼・自律型デプロイメント基盤プラットフォームです。
 
