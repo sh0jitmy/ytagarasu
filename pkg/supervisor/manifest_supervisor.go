@@ -69,11 +69,13 @@ type ManifestSpec struct {
 
 // ManifestSupervisor coordinates multiple supervised processes defined in a manifest.
 type ManifestSupervisor struct {
-	manifestPath string
-	mu           sync.RWMutex
-	supervisors  map[string]ProcessSupervisor
-	configs      map[string]ProcessConfig
-	containers   []manifest.ContainerSpec
+	manifestPath    string
+	mu              sync.RWMutex
+	supervisors     map[string]ProcessSupervisor
+	configs         map[string]ProcessConfig
+	containers      []manifest.ContainerSpec
+	targetNetworks  []string
+	createdNetworks []string
 }
 
 // ManifestSupervisorConfig defines runtime guardrails and preflight checks for ManifestSupervisor.
@@ -198,10 +200,20 @@ func NewManifestSupervisorFromYAMLWithConfig(data []byte, cfg ManifestSupervisor
 	}
 
 	// 4. Declarative Containers section mapping
+	defaultNet := fmt.Sprintf("ytg-%s-net", SanitizeDockerNetworkName(spec.Release))
+	networkSet := make(map[string]bool)
+	resolvedContainers := make([]manifest.ContainerSpec, 0, len(spec.Containers))
+
 	for _, ctr := range spec.Containers {
 		if ctr.Name == "" {
 			continue
 		}
+		if ctr.Network == "" {
+			ctr.Network = defaultNet
+		}
+		networkSet[ctr.Network] = true
+		resolvedContainers = append(resolvedContainers, ctr)
+
 		if _, exists := configs[ctr.Name]; !exists {
 			args := []string{"run", "--rm", "--name", ctr.Name}
 
@@ -276,10 +288,16 @@ func NewManifestSupervisorFromYAMLWithConfig(data []byte, cfg ManifestSupervisor
 		supervisors[name] = NewProcessSupervisor(cfg)
 	}
 
+	targetNetworks := make([]string, 0, len(networkSet))
+	for netName := range networkSet {
+		targetNetworks = append(targetNetworks, netName)
+	}
+
 	return &ManifestSupervisor{
-		supervisors: supervisors,
-		configs:     configs,
-		containers:  spec.Containers,
+		supervisors:    supervisors,
+		configs:        configs,
+		containers:     resolvedContainers,
+		targetNetworks: targetNetworks,
 	}, nil
 }
 
@@ -287,6 +305,11 @@ func NewManifestSupervisorFromYAMLWithConfig(data []byte, cfg ManifestSupervisor
 func (m *ManifestSupervisor) StartAll(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Ensure isolated custom bridge networks exist before starting containers
+	if err := m.ensureDockerNetworks(ctx); err != nil {
+		return fmt.Errorf("failed ensuring docker networks: %w", err)
+	}
 
 	// Ensure all offline container images are loaded before supervision
 	if err := m.ensureContainerImagesLoaded(ctx); err != nil {
@@ -312,6 +335,10 @@ func (m *ManifestSupervisor) StopAll(gracePeriod time.Duration) error {
 			firstErr = fmt.Errorf("failed to stop process %s: %w", name, err)
 		}
 	}
+
+	// Clean up auto-created networks after all processes stop
+	m.cleanupDockerNetworks(context.Background())
+
 	return firstErr
 }
 
@@ -487,4 +514,32 @@ func (m *ManifestSupervisor) ensureContainerImagesLoaded(ctx context.Context) er
 		}
 	}
 	return nil
+}
+
+// ensureDockerNetworks ensures all custom bridge networks needed by containers exist.
+func (m *ManifestSupervisor) ensureDockerNetworks(ctx context.Context) error {
+	if len(m.containers) == 0 {
+		return nil
+	}
+	if err := CheckDockerDaemonReachable(ctx); err != nil {
+		return fmt.Errorf("cannot configure docker networks: %w", err)
+	}
+	for _, netName := range m.targetNetworks {
+		created, err := EnsureDockerNetwork(ctx, netName)
+		if err != nil {
+			return fmt.Errorf("failed to ensure docker network %s: %w", netName, err)
+		}
+		if created {
+			m.createdNetworks = append(m.createdNetworks, netName)
+		}
+	}
+	return nil
+}
+
+// cleanupDockerNetworks safely removes any networks automatically created during supervision.
+func (m *ManifestSupervisor) cleanupDockerNetworks(ctx context.Context) {
+	for _, netName := range m.createdNetworks {
+		_ = RemoveDockerNetwork(ctx, netName)
+	}
+	m.createdNetworks = nil
 }
