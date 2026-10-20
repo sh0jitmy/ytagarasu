@@ -17,6 +17,8 @@
 package manifest_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sh0jitmy/ytagarasu/internal/manifest"
@@ -100,4 +102,92 @@ services:
 	_, err := manifest.ConvertComposeToManifest([]byte(invalidYAML), "invalid")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required 'image'")
+}
+
+func TestParse_DirectComposeIngestion(t *testing.T) {
+	t.Parallel()
+
+	composeYAML := `
+version: "3"
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+  worker:
+    image: python:3.11-slim
+    command: ["python", "worker.py"]
+`
+
+	m, err := manifest.Parse([]byte(composeYAML))
+	require.NoError(t, err)
+	require.NotNil(t, m)
+
+	assert.Equal(t, "1.0", m.Version)
+	assert.Equal(t, "compose-app", m.Release)
+	assert.Len(t, m.Containers, 2)
+}
+
+func TestValidate_ContainersOnly(t *testing.T) {
+	t.Parallel()
+
+	m := &manifest.Manifest{
+		Version:       "1.0",
+		BundleVersion: "1.0.0",
+		Release:       "container-only-release",
+		Targets: []manifest.Target{
+			{OS: "linux", Release: "ubuntu-24.04", Arch: "amd64"},
+		},
+		Containers: []manifest.ContainerSpec{
+			{Name: "redis", Image: "redis:7"},
+		},
+	}
+
+	err := manifest.Validate(m)
+	require.NoError(t, err)
+}
+
+func TestParseFile_WithComposeFileDirective(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	manifestPath := filepath.Join(tmpDir, "manifest.yaml")
+
+	composeContent := `
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+`
+	require.NoError(t, os.WriteFile(composePath, []byte(composeContent), 0600))
+
+	manifestContent := `
+version: "1.0"
+bundleVersion: "1.0.0"
+release: "hospital-system"
+composeFile: "docker-compose.yml"
+targets:
+  - os: "linux"
+    release: "ubuntu-24.04"
+    arch: "amd64"
+applications:
+  - name: "gateway"
+    type: "golang"
+    destination: "/opt/gateway"
+`
+	require.NoError(t, os.WriteFile(manifestPath, []byte(manifestContent), 0600))
+
+	parsed, err := manifest.ParseFile(manifestPath)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+
+	assert.Equal(t, "hospital-system", parsed.Release)
+	require.Len(t, parsed.Applications, 1)
+	assert.Equal(t, "gateway", parsed.Applications[0].Name)
+
+	require.Len(t, parsed.Containers, 1)
+	assert.Equal(t, "db", parsed.Containers[0].Name)
+	assert.Equal(t, "postgres:16", parsed.Containers[0].Image)
 }

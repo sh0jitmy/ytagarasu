@@ -62,24 +62,53 @@ func (l LintIssue) String() string {
 }
 
 // Parse unmarshals raw YAML bytes into a Manifest structure.
+// If the input represents a standalone docker-compose YAML, it transparently ingests it.
 func Parse(data []byte) (*Manifest, error) {
 	var m Manifest
-	if err := yaml.Unmarshal(data, &m); err != nil {
+	err := yaml.Unmarshal(data, &m)
+	if err == nil {
+		if valErr := Validate(&m); valErr == nil {
+			return &m, nil
+		}
+	}
+
+	// Zero-Conversion Direct Ingestion: Check if this is a standalone docker-compose file
+	if compManifest, compErr := ConvertComposeToManifest(data, "compose-app"); compErr == nil && len(compManifest.Containers) > 0 {
+		return compManifest, nil
+	}
+
+	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal manifest YAML: %w", err)
 	}
-	if err := Validate(&m); err != nil {
-		return nil, fmt.Errorf("manifest validation failed: %w", err)
-	}
-	return &m, nil
+	return nil, fmt.Errorf("manifest validation failed: %w", Validate(&m))
 }
 
-// ParseFile reads and parses a manifest YAML file from disk.
+// ParseFile reads and parses a manifest YAML file from disk, resolving any composeFile directives.
 func ParseFile(filePath string) (*Manifest, error) {
-	data, err := os.ReadFile(filepath.Clean(filePath))
+	cleanPath := filepath.Clean(filePath)
+	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manifest file: %w", err)
 	}
-	return Parse(data)
+	m, err := Parse(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve composeFile reference if defined
+	if strings.TrimSpace(m.ComposeFile) != "" {
+		composePath := m.ComposeFile
+		if !filepath.IsAbs(composePath) {
+			composePath = filepath.Join(filepath.Dir(cleanPath), composePath)
+		}
+		compManifest, err := ConvertComposeFile(composePath, m.Release)
+		if err != nil {
+			return nil, fmt.Errorf("failed resolving composeFile '%s': %w", m.ComposeFile, err)
+		}
+		m.Containers = append(m.Containers, compManifest.Containers...)
+	}
+
+	return m, nil
 }
 
 // Validate performs structural and semantic checks on the Manifest.
@@ -104,7 +133,7 @@ func Validate(m *Manifest) error {
 			return fmt.Errorf("target[%d] missing os, release, or arch", i)
 		}
 	}
-	if len(m.Applications) == 0 {
+	if len(m.Applications) == 0 && len(m.Containers) == 0 && strings.TrimSpace(m.ComposeFile) == "" {
 		return ErrMissingApplications
 	}
 
