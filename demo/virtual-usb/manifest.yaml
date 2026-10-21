@@ -1,0 +1,25 @@
+version: "1.0"
+metadata:
+  name: "factory-edge-service"
+  release: "v1.0.0-offline"
+  environment: "airgapped-production"
+
+processes:
+  - name: edge-api-server
+    binary: ./bin/demo-api
+    args: ["-port", "8081"]
+    work_dir: .
+    auto_restart: true
+    max_restarts: 5
+    listen_port: 8081
+    health_endpoint: "http://localhost:8081/healthz"
+    rollback_on_error: true
+    escape_hatch_mode: true
+
+  - name: telemetry-worker
+    binary: ./bin/demo-worker
+    work_dir: .
+    auto_restart: true
+    max_restarts: 5
+    rollback_on_error: true
+    escape_hatch_mode: true
