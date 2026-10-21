@@ -41,11 +41,12 @@ type SupervisorState struct {
 
 // ManifestSpec represents deployment manifest structure for process supervision.
 type ManifestSpec struct {
-	Version    string                   `yaml:"version"`
-	Release    string                   `yaml:"release,omitempty"`
-	Processes  []ProcessConfig          `yaml:"processes,omitempty"`
-	Containers []manifest.ContainerSpec `yaml:"containers,omitempty"`
-	Services   []struct {
+	Version     string                   `yaml:"version"`
+	Release     string                   `yaml:"release,omitempty"`
+	ComposeFile string                   `yaml:"composeFile,omitempty"`
+	Processes   []ProcessConfig          `yaml:"processes,omitempty"`
+	Containers  []manifest.ContainerSpec `yaml:"containers,omitempty"`
+	Services    []struct {
 		Name          string `yaml:"name"`
 		Binary        string `yaml:"binary,omitempty"`
 		Action        string `yaml:"action,omitempty"`
@@ -123,7 +124,18 @@ func NewManifestSupervisorFromYAML(data []byte) (*ManifestSupervisor, error) {
 // NewManifestSupervisorFromYAMLWithConfig constructs ManifestSupervisor from raw YAML bytes with preflight config.
 func NewManifestSupervisorFromYAMLWithConfig(data []byte, cfg ManifestSupervisorConfig) (*ManifestSupervisor, error) {
 	var spec ManifestSpec
-	if err := yaml.Unmarshal(data, &spec); err != nil {
+	err := yaml.Unmarshal(data, &spec)
+	if err != nil || (len(spec.Processes) == 0 && len(spec.Containers) == 0 && len(spec.Services) == 0 && len(spec.Applications) == 0) {
+		// Zero-Conversion Direct Ingestion: Check if this is a standalone docker-compose YAML
+		if compManifest, compErr := manifest.ConvertComposeToManifest(data, "compose-app"); compErr == nil && len(compManifest.Containers) > 0 {
+			spec.Containers = compManifest.Containers
+			if spec.Release == "" {
+				spec.Release = compManifest.Release
+			}
+			err = nil
+		}
+	}
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifest YAML: %w", err)
 	}
 

@@ -255,6 +255,7 @@ type Manifest struct {
 	Services            []Service                `json:"services,omitempty" yaml:"services,omitempty"`
 	HealthChecks        []HealthCheck            `json:"healthChecks,omitempty" yaml:"healthChecks,omitempty"`
 	Containers          []ContainerSpec          `json:"containers,omitempty" yaml:"containers,omitempty"`
+	ComposeFile         string                   `json:"composeFile,omitempty" yaml:"composeFile,omitempty"`
 	Rollback            RollbackPolicy           `json:"rollback" yaml:"rollback"`
 }
 

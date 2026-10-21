@@ -135,3 +135,67 @@ services:
 		t.Errorf("mock-daemon not found in loaded state")
 	}
 }
+
+func TestManifestSupervisor_DirectComposeIngestion(t *testing.T) {
+	t.Parallel()
+
+	composeYAML := []byte(`
+version: "3.8"
+services:
+  web:
+    image: "nginx:alpine"
+    ports:
+      - "8080:80"
+  cache:
+    image: "redis:7-alpine"
+    ports:
+      - "6379:6379"
+`)
+
+	ms, err := NewManifestSupervisorFromYAML(composeYAML)
+	if err != nil {
+		t.Fatalf("unexpected error initializing from raw compose YAML: %v", err)
+	}
+
+	statuses := ms.Status()
+	if len(statuses) != 2 {
+		t.Fatalf("expected 2 container processes, got %d", len(statuses))
+	}
+
+	if _, exists := statuses["web"]; !exists {
+		t.Errorf("web container not found in statuses")
+	}
+	if _, exists := statuses["cache"]; !exists {
+		t.Errorf("cache container not found in statuses")
+	}
+}
+
+func TestManifestSupervisor_DirectComposeFile(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+
+	composeContent := `
+version: "3"
+services:
+  gateway:
+    image: "traefik:v2.10"
+    ports:
+      - "80:80"
+      - "443:443"
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0600); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	ms, err := NewManifestSupervisor(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error initializing from compose file path: %v", err)
+	}
+
+	statuses := ms.Status()
+	if _, exists := statuses["gateway"]; !exists {
+		t.Errorf("gateway container process not found in supervisor statuses")
+	}
+}
