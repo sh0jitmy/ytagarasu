@@ -53,7 +53,7 @@ func TestAirgapUSB_ResearcherStack_ChaosRecoveryScenario(t *testing.T) {
 	}
 
 	binDir := filepath.Join(usbDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0750))
 
 	// 1. Build Research Collector worker binary
 	collectorBinPath := filepath.Join(binDir, "research-collector")
@@ -98,7 +98,7 @@ processes:
 `, collectorBinPath, collectorPort, usbDir, collectorPort, collectorPort,
 		portalBinPath, portalPort, collectorPort, usbDir, portalPort, portalPort)
 
-	require.NoError(t, os.WriteFile(manifestPath, []byte(manifestContent), 0644))
+	require.NoError(t, os.WriteFile(manifestPath, []byte(manifestContent), 0600))
 
 	// 5. Generate cryptographic SHA256SUMS file
 	checksumFile := filepath.Join(usbDir, "SHA256SUMS")
@@ -132,13 +132,13 @@ processes:
 
 	// Ensure both collector and portal become healthy
 	require.Eventually(t, func() bool {
-		cResp, cErr := http.Get(collectorHealthURL)
+		cResp, cErr := http.Get(collectorHealthURL) //nolint:gosec // Controlled test URL
 		if cErr != nil || cResp.StatusCode != http.StatusOK {
 			return false
 		}
 		_ = cResp.Body.Close()
 
-		pResp, pErr := http.Get(portalHealthURL)
+		pResp, pErr := http.Get(portalHealthURL) //nolint:gosec // Controlled test URL
 		if pErr != nil || pResp.StatusCode != http.StatusOK {
 			return false
 		}
@@ -187,7 +187,7 @@ processes:
 	var recoveredCollectorPID int
 	require.Eventually(t, func() bool {
 		// 1. Healthcheck returns HTTP 200 again
-		resp, err := http.Get(collectorHealthURL)
+		resp, err := http.Get(collectorHealthURL) //nolint:gosec // Controlled test URL
 		if err != nil || resp.StatusCode != http.StatusOK {
 			return false
 		}
@@ -261,8 +261,9 @@ func main() {
 	_ = srv.Close()
 }
 `
-	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0644))
+	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0600))
 
+	//nolint:gosec // Safe compile in test
 	cmd := exec.Command("go", "build", "-o", targetPath, mainGo)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "failed to build researcher worker binary: %s", string(out))
@@ -305,8 +306,9 @@ func main() {
 	_ = srv.Close()
 }
 `
-	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0644))
+	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0600))
 
+	//nolint:gosec // Safe compile in test
 	cmd := exec.Command("go", "build", "-o", targetPath, mainGo)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "failed to build research portal binary: %s", string(out))

@@ -37,6 +37,8 @@ import (
 // 2. Generating Ed25519 signing keys and cryptographically signing the manifest
 // 3. Packaging all offline assets (binaries, packages, configs) into a distributable archive
 // 4. Verifying the final bundle archive against cryptographic checksums and signatures
+//
+//nolint:paralleltest // Manipulates filesystem pipeline
 func TestManifestAndArchiveBuildPipeline(t *testing.T) {
 	workDir := t.TempDir()
 	t.Logf("Build workstation workspace: %s", workDir)
@@ -56,10 +58,10 @@ services:
     ports:
       - "6379:6379"
 `
-	require.NoError(t, os.WriteFile(composePath, []byte(composeYAML), 0644))
+	require.NoError(t, os.WriteFile(composePath, []byte(composeYAML), 0600))
 
 	// Step 2: Convert compose to ytagarasu manifest
-	composeData, err := os.ReadFile(composePath)
+	composeData, err := os.ReadFile(filepath.Clean(composePath)) //nolint:gosec
 	require.NoError(t, err)
 
 	converted, err := manifest.ConvertComposeToManifest(composeData, "his-production-release")
@@ -69,13 +71,13 @@ services:
 
 	// Append native supervised processes (Bulkhead hospital gateway & audit daemon)
 	artifactsDir := filepath.Join(workDir, "artifacts")
-	require.NoError(t, os.MkdirAll(artifactsDir, 0755))
+	require.NoError(t, os.MkdirAll(artifactsDir, 0750))
 
 	dummyGatewayPath := filepath.Join(artifactsDir, "his-gateway")
-	require.NoError(t, os.WriteFile(dummyGatewayPath, []byte("#!/bin/sh\necho his-gateway"), 0755))
+	require.NoError(t, os.WriteFile(dummyGatewayPath, []byte("#!/bin/sh\necho his-gateway"), 0600))
 
 	dummyAuditPath := filepath.Join(artifactsDir, "audit-backup-daemon")
-	require.NoError(t, os.WriteFile(dummyAuditPath, []byte("#!/bin/sh\necho audit-backup-daemon"), 0755))
+	require.NoError(t, os.WriteFile(dummyAuditPath, []byte("#!/bin/sh\necho audit-backup-daemon"), 0600))
 
 	converted.Applications = []manifest.Application{
 		{
@@ -95,7 +97,7 @@ services:
 	manifestPath := filepath.Join(workDir, "manifest.yaml")
 	manifestBytes, err := yaml.Marshal(converted)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(manifestPath, manifestBytes, 0644))
+	require.NoError(t, os.WriteFile(filepath.Clean(manifestPath), manifestBytes, 0600)) //nolint:gosec // Safe temporary path
 	t.Log("✓ [MANIFEST] Saved production manifest.yaml with 2 containers and 2 native applications")
 
 	// Step 3: Cryptographic Ed25519 key generation and manifest signing
@@ -104,7 +106,7 @@ services:
 
 	signature := ed25519.Sign(privKey, manifestBytes)
 	sigPath := manifestPath + ".sig"
-	require.NoError(t, os.WriteFile(sigPath, signature, 0644))
+	require.NoError(t, os.WriteFile(filepath.Clean(sigPath), signature, 0600)) //nolint:gosec // Safe temporary path
 
 	// Verify signature immediately
 	assert.True(t, ed25519.Verify(pubKey, manifestBytes, signature), "Ed25519 signature must verify")
@@ -112,9 +114,9 @@ services:
 
 	// Prepare offline container image archive mocks (images/*.tar)
 	imagesDir := filepath.Join(workDir, "images")
-	require.NoError(t, os.MkdirAll(imagesDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(imagesDir, "postgres-db.tar"), []byte("dummy tar content for postgres"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(imagesDir, "redis-cache.tar"), []byte("dummy tar content for redis"), 0644))
+	require.NoError(t, os.MkdirAll(imagesDir, 0750))
+	require.NoError(t, os.WriteFile(filepath.Join(imagesDir, "postgres-db.tar"), []byte("dummy tar content for postgres"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(imagesDir, "redis-cache.tar"), []byte("dummy tar content for redis"), 0600))
 
 	// Step 4: Build offline deployment bundle archive (.tar.gz)
 	outputBundle := filepath.Join(workDir, "hospital-his-bundle-2026.10.tar.gz")
@@ -137,7 +139,7 @@ services:
 	t.Logf("✓ [BUNDLE] Generated offline distribution archive: %s (%d bytes)", filepath.Base(outputBundle), fi.Size())
 
 	// Step 5: Verify archive contents & SHA-256 integrity
-	bundleData, err := os.ReadFile(outputBundle)
+	bundleData, err := os.ReadFile(filepath.Clean(outputBundle)) //nolint:gosec
 	require.NoError(t, err)
 	hasher := sha256.New()
 	hasher.Write(bundleData)

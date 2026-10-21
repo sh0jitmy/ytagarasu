@@ -56,7 +56,7 @@ func TestAirgapUSB_HospitalOTStack_ChaosRecoveryScenario(t *testing.T) {
 	}
 
 	binDir := filepath.Join(usbDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0750))
 
 	// 1. Build HIS Core Gateway binary (Electronic Health Record / DICOM integration)
 	hisGatewayBinPath := filepath.Join(binDir, "his-gateway")
@@ -101,15 +101,15 @@ processes:
 `, hisGatewayBinPath, hisGatewayPort, usbDir, hisGatewayPort, hisGatewayPort,
 		auditDaemonBinPath, auditDaemonPort, usbDir, auditDaemonPort, auditDaemonPort)
 
-	require.NoError(t, os.WriteFile(manifestPath, []byte(manifestContent), 0644))
+	require.NoError(t, os.WriteFile(manifestPath, []byte(manifestContent), 0600))
 
 	// 5. Generate cryptographic SHA256SUMS file
 	checksumFile := filepath.Join(usbDir, "SHA256SUMS")
 	generateSHA256ChecksumFile(t, checksumFile, map[string]string{
-		"manifest.yaml":            manifestPath,
-		"apt-cache.tar.gz":         aptCachePath,
-		"bin/his-gateway":          hisGatewayBinPath,
-		"bin/audit-backup-daemon":  auditDaemonBinPath,
+		"manifest.yaml":           manifestPath,
+		"apt-cache.tar.gz":        aptCachePath,
+		"bin/his-gateway":         hisGatewayBinPath,
+		"bin/audit-backup-daemon": auditDaemonBinPath,
 	})
 
 	// =========================================================================
@@ -135,13 +135,13 @@ processes:
 
 	// Ensure both HIS Gateway and Audit Daemon become healthy
 	require.Eventually(t, func() bool {
-		hResp, hErr := http.Get(hisHealthURL)
+		hResp, hErr := http.Get(hisHealthURL) //nolint:gosec // Controlled test URL
 		if hErr != nil || hResp.StatusCode != http.StatusOK {
 			return false
 		}
 		_ = hResp.Body.Close()
 
-		aResp, aErr := http.Get(auditHealthURL)
+		aResp, aErr := http.Get(auditHealthURL) //nolint:gosec // Controlled test URL
 		if aErr != nil || aResp.StatusCode != http.StatusOK {
 			return false
 		}
@@ -190,7 +190,7 @@ processes:
 	var recoveredHISPID int
 	require.Eventually(t, func() bool {
 		// 1. Healthcheck returns HTTP 200 again
-		resp, err := http.Get(hisHealthURL)
+		resp, err := http.Get(hisHealthURL) //nolint:gosec // Controlled test URL
 		if err != nil || resp.StatusCode != http.StatusOK {
 			return false
 		}
@@ -264,8 +264,9 @@ func main() {
 	_ = srv.Close()
 }
 `
-	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0644))
+	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0600))
 
+	//nolint:gosec // Safe compile in test
 	cmd := exec.Command("go", "build", "-o", targetPath, mainGo)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "failed to build his-gateway binary: %s", string(out))
@@ -309,8 +310,9 @@ func main() {
 	_ = srv.Close()
 }
 `
-	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0644))
+	require.NoError(t, os.WriteFile(mainGo, []byte(code), 0600))
 
+	//nolint:gosec // Safe compile in test
 	cmd := exec.Command("go", "build", "-o", targetPath, mainGo)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "failed to build audit-backup-daemon binary: %s", string(out))
