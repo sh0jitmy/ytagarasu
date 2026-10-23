@@ -274,6 +274,10 @@ func main() {
 								Name:  "delta-from",
 								Usage: "Path to previous release bundle (.tar.gz) to build a delta bundle",
 							},
+							&cli.StringFlag{
+								Name:  "split",
+								Usage: "Split bundle archive into multi-part chunks (e.g. 25MB, 100KB)",
+							},
 						},
 						Action: runBundleExport,
 					},
@@ -284,9 +288,23 @@ func main() {
 						Action:    runBundleDiff,
 					},
 					{
+						Name:      "assemble",
+						Usage:     "Reassemble a multi-part bundle into a single consolidated .tar.gz archive",
+						ArgsUsage: "<path/to/bundle.manifest.yaml or directory>",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:     "output",
+								Aliases:  []string{"o"},
+								Required: true,
+								Usage:    "Output archive path (.tar.gz)",
+							},
+						},
+						Action: runBundleAssemble,
+					},
+					{
 						Name:      "verify",
-						Usage:     "Verify integrity, checksums, and Ed25519 signature of a bundle",
-						ArgsUsage: "<path/to/bundle.tar.gz>",
+						Usage:     "Verify integrity, checksums, and Ed25519 signature of a bundle (or multi-part bundle)",
+						ArgsUsage: "<path/to/bundle.tar.gz or multi-part directory>",
 						Flags: []cli.Flag{
 							&cli.StringFlag{
 								Name:  "key",
@@ -593,6 +611,17 @@ func runBundleExport(c *cli.Context) error {
 		return nil
 	}
 
+	var splitBytes int64
+	splitStr := c.String("split")
+	if splitStr != "" {
+		var sErr error
+		splitBytes, sErr = bundle.ParseSize(splitStr)
+		if sErr != nil {
+			return fmt.Errorf("invalid --split size %q: %w", splitStr, sErr)
+		}
+		fmt.Printf("  • Multi-Part Split: Enabled (%s chunks / %d bytes)\n", splitStr, splitBytes)
+	}
+
 	opts := bundle.BuildOptions{
 		ManifestPath:       manifestPath,
 		SourceDir:          sourceDir,
@@ -600,6 +629,7 @@ func runBundleExport(c *cli.Context) error {
 		ReportOutputFile:   reportPath,
 		PrivateKey:         privKey,
 		AllowWarningStatus: force,
+		SplitBytes:         splitBytes,
 	}
 
 	evalRes, err := bundle.BuildBundle(opts)
@@ -665,9 +695,28 @@ func runBundleDiff(c *cli.Context) error {
 	return nil
 }
 
+func runBundleAssemble(c *cli.Context) error {
+	if c.NArg() < 1 {
+		return fmt.Errorf("please specify multi-part manifest or directory")
+	}
+	manifestPath := c.Args().First()
+	outputPath := c.String("output")
+	if outputPath == "" {
+		return fmt.Errorf("--output (-o) is required")
+	}
+
+	fmt.Printf("==> Assembling multi-part bundle from: %s\n", manifestPath)
+	if err := bundle.AssembleMultiPart(manifestPath, outputPath); err != nil {
+		return fmt.Errorf("failed assembling bundle: %w", err)
+	}
+
+	fmt.Printf("✅ Successfully assembled multi-part bundle into: %s\n", outputPath)
+	return nil
+}
+
 func runBundleVerify(c *cli.Context) error {
 	if c.NArg() < 1 {
-		return fmt.Errorf("please specify bundle archive file (.tar.gz)")
+		return fmt.Errorf("please specify bundle archive file (.tar.gz) or multi-part manifest directory")
 	}
 	bundlePath := c.Args().First()
 	keyPath := c.String("key")
@@ -683,7 +732,24 @@ func runBundleVerify(c *cli.Context) error {
 		}
 	}
 
-	res, err := bundle.VerifyBundle(bundlePath, pubKey)
+	// Check if target is a multi-part directory or manifest
+	info, statErr := os.Stat(bundlePath)
+	isMultiPart := false
+	if statErr == nil {
+		if info.IsDir() || strings.HasSuffix(bundlePath, ".yaml") || strings.HasSuffix(bundlePath, ".yml") {
+			isMultiPart = true
+		}
+	}
+
+	var res *bundle.VerificationResult
+	var err error
+
+	if isMultiPart {
+		res, err = bundle.VerifyMultiPartBundle(bundlePath, pubKey)
+	} else {
+		res, err = bundle.VerifyBundle(bundlePath, pubKey)
+	}
+
 	if err != nil {
 		return fmt.Errorf("bundle verification failed: %w", err)
 	}
@@ -697,7 +763,9 @@ func runBundleVerify(c *cli.Context) error {
 	}
 
 	fmt.Printf("✅ Bundle is VALID and cryptographically verified!\n")
-	fmt.Printf("  • Release:         %s (v%s)\n", res.Manifest.Release, res.Manifest.BundleVersion)
+	if res.Manifest != nil {
+		fmt.Printf("  • Release:         %s (v%s)\n", res.Manifest.Release, res.Manifest.BundleVersion)
+	}
 	fmt.Printf("  • Signature:       Valid (Ed25519)\n")
 	fmt.Printf("  • Checksums:       Valid (%d files verified)\n", res.FileCount)
 	return nil
