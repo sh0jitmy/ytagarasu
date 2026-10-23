@@ -46,6 +46,8 @@ type BuildOptions struct {
 	PrivateKey         ed25519.PrivateKey
 	TargetPlatform     manifest.Target
 	AllowWarningStatus bool
+	SplitBytes         int64
+	SplitOutputDir     string
 }
 
 // BuildBundle validates, risk-evaluates, signs, and packages an offline deployment bundle archive.
@@ -226,6 +228,28 @@ func BuildBundle(opts BuildOptions) (*manifest.PreparationResult, error) {
 	}
 	if _, chkWriteErr := tw.Write(checksumContent); chkWriteErr != nil {
 		return nil, fmt.Errorf("failed writing checksums to tar: %w", chkWriteErr)
+	}
+
+	// If split is requested, flush and split the generated archive into chunks
+	if opts.SplitBytes > 0 {
+		if closeErr := tw.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed closing tar writer before split: %w", closeErr)
+		}
+		if closeErr := gw.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed closing gzip writer before split: %w", closeErr)
+		}
+		if closeErr := outFile.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed closing output file before split: %w", closeErr)
+		}
+
+		splitDir := opts.SplitOutputDir
+		if splitDir == "" {
+			splitDir = filepath.Dir(cleanOutPath)
+		}
+		baseName := filepath.Base(cleanOutPath)
+		if _, splitErr := SplitFile(cleanOutPath, opts.SplitBytes, splitDir, baseName); splitErr != nil {
+			return nil, fmt.Errorf("failed splitting bundle archive: %w", splitErr)
+		}
 	}
 
 	return evalResult, nil
