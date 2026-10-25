@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload Air-Gap Snapshots and Logs Artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: airgap-scenario-evidence
           path: test_reports/airgap/
