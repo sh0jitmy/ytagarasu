@@ -4,6 +4,7 @@ go 1.26.10
 
 require (
 	entgo.io/ent v0.14.6
+	filippo.io/age v1.3.2
 	github.com/gin-gonic/gin v1.12.0
 	github.com/glebarez/go-sqlite v1.23.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -25,6 +26,7 @@ require (
 
 require (
 	ariga.io/atlas v1.2.3 // indirect
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect

@@ -256,6 +256,7 @@ type Manifest struct {
 	HealthChecks        []HealthCheck            `json:"healthChecks,omitempty" yaml:"healthChecks,omitempty"`
 	Containers          []ContainerSpec          `json:"containers,omitempty" yaml:"containers,omitempty"`
 	ComposeFile         string                   `json:"composeFile,omitempty" yaml:"composeFile,omitempty"`
+	Secrets             map[string]string        `json:"secrets,omitempty" yaml:"secrets,omitempty"`
 	Rollback            RollbackPolicy           `json:"rollback" yaml:"rollback"`
 }
 
