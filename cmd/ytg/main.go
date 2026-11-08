@@ -75,6 +75,10 @@ func main() {
 	case "diff":
 		handleDiffCommand(os.Args[2:])
 
+	case "secret":
+		handleSecretCommand(os.Args[2:])
+		return
+
 	case "completion":
 		handleCompletion(os.Args[2:])
 
@@ -649,6 +653,7 @@ func printHelpTo(w io.Writer) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Subsystems:")
 	_, _ = fmt.Fprintln(w, "  supervisor <subcmd>     Manage runtime process daemon (run, status, inspect, restart, rollback)")
+	_, _ = fmt.Fprintln(w, "  secret <subcmd>         Manage inline encrypted secrets with age/X25519 (keygen, encrypt, decrypt, view)")
 	_, _ = fmt.Fprintln(w, "  manifest <subcmd>       Manage deployment manifests (init, keygen, sign, verify, convert, validate, lint)")
 	_, _ = fmt.Fprintln(w, "  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
 	_, _ = fmt.Fprintln(w, "  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
