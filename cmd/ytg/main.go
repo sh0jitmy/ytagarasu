@@ -75,6 +75,10 @@ func main() {
 	case "diff":
 		handleDiffCommand(os.Args[2:])
 
+	case "cluster":
+		handleClusterCommand(os.Args[2:])
+		return
+
 	case "completion":
 		handleCompletion(os.Args[2:])
 
@@ -649,6 +653,7 @@ func printHelpTo(w io.Writer) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Subsystems:")
 	_, _ = fmt.Fprintln(w, "  supervisor <subcmd>     Manage runtime process daemon (run, status, inspect, restart, rollback)")
+	_, _ = fmt.Fprintln(w, "  cluster <subcmd>        Multi-node topology, heartbeat pulse, and drift observability (status, inspect)")
 	_, _ = fmt.Fprintln(w, "  manifest <subcmd>       Manage deployment manifests (init, keygen, sign, verify, convert, validate, lint)")
 	_, _ = fmt.Fprintln(w, "  bundle <subcmd>         Manage air-gapped deployment packages (export, diff, verify, keygen)")
 	_, _ = fmt.Fprintln(w, "  audit <subcmd>          Verify cryptographic hashchain logs (verify, list)")
